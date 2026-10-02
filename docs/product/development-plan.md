@@ -21,7 +21,22 @@
 | 3.3 Assumptions against what happened | **Not started** — needs the owner's boundary decision; nothing yet maps an observation to a Helm assumption without inference | — |
 | 4 Production | **Closed** until stage 1 runs on staging and an organization is recorded TRUSTED there | Stage 4 checklist |
 
-`npm run check`: 179 unit (one opt-in live test skipped), 46 integration, three contracts — green.
+**Features since (2 Oct, later):**
+
+| Feature | ADR |
+| --- | --- |
+| Precedents — concluded commitments that resemble a new one, and lessons that may apply, at intake and acceptance | ADR-0025 |
+| Words carry only what their writer could read — operational lessons no longer sealed from their own authors | ADR-0024 |
+| Assumptions held or broke — said by people, a broken one asks the principal, a record across decisions | ADR-0026 |
+| forge.observation.v1 — the open, signed door for any execution surface, with a durable observation ledger | ADR-0027 |
+| Value, as claimed and as realized, beside what it took | ADR-0028 |
+| What work waited on — dependencies and their lateness, as a record | ADR-0029 |
+| Reading a review for what it taught — proposed explanations and lessons, recorded by a person | ADR-0030 |
+
+The 3.2 question changes shape: any system can now report through forge.observation.v1, so what waits on the owner is
+an adapter author and a sandbox to prove one real surface end to end, not a Forge connector.
+
+`npm run check`: 220 unit (one opt-in live test skipped), 46 integration, three contracts — green.
 
 **Reads at scale** (`npm run bench:reads`, SYNTHETIC, 10 000 commitments, 186 668 events; PGlite under RLS):
 
