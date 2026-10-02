@@ -7,7 +7,8 @@
  */
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { assumptionRecords, type ExecutionEpisode, episodeSections, executionRecords, type RecordGrouping, valueRecords } from '@forge/kernel';
+import { assumptionRecords, dependencyRecords, type ExecutionEpisode, episodeSections, executionRecords, type RecordGrouping, valueRecords } from '@forge/kernel';
+import { DependencyRecords } from '../components/records/Dependencies';
 import { ValueRecords } from '../components/records/Value';
 import { AssumptionRecords } from '../components/records/Assumptions';
 import { ExecutionRecords } from '../components/records/ExecutionRecords';
@@ -86,6 +87,10 @@ export function MemoryPage() {
             <Section>
               <SectionHead title="Value, as claimed and as realized" small aside="what each decision was meant to do, and what it took" />
               <ValueRecords records={valueRecords(all)} />
+            </Section>
+            <Section>
+              <SectionHead title="What work waited on" small aside="each dependency, how often it came after the date it was needed" />
+              <DependencyRecords records={dependencyRecords(all)} />
             </Section>
             <Section>
               <SectionHead title="Assumptions, as they turned out" small aside="which held, which broke — said by people who were there" />

@@ -238,7 +238,8 @@ noted. The memory page shows, across decisions, which held and which broke — c
 
 **Value** (ADR-0028): for each decision, what it was meant to create or protect beside what people said it did, the
 measures and whether a system stood behind them, and what it took — commitments, owners, days, dates moved — with
-nothing priced and no ratio.
+nothing priced and no ratio. **Dependencies** (ADR-0029): what work waited on, how often each came after the date it
+was needed, and every case with the knock-on as a fact beside it.
 
 **Execution records** (ADR-0014) show, per owner or principal, what the ledger
 observed — endings, timing against the first promised date, date changes, recurring

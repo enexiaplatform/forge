@@ -3,7 +3,7 @@
  */
 import { test, describe, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { conditionsOf, createForgeRuntime, createInMemoryStore, manualClock, sequentialIds, unwrap, valueRecords } from '@forge/kernel';
+import { conditionsOf, createForgeRuntime, createInMemoryStore, dependencyRecords, manualClock, sequentialIds, unwrap, valueRecords } from '@forge/kernel';
 import { createMeridianDemo, MOMENTS } from '@forge/demo';
 
 describe('value records — the Rohto decision', () => {
@@ -72,4 +72,36 @@ test('a decision that ended without saying what value it produced: counted unsta
   const c = conditionsOf(view).find((x) => x.code === 'VALUE_UNSTATED');
   assert.equal(c.severity, 'NOTED');
   assert.match(c.statement.text, /Nobody has said what became of the revenue value/);
+});
+
+describe('what work waited on — the Rohto story', () => {
+  const demo = createMeridianDemo();
+  let records;
+  before(async () => {
+    for (const m of MOMENTS) await demo.advanceTo(m.key);
+    records = dependencyRecords(unwrap(await demo.runtime.list(demo.people.gm.scope)));
+  });
+
+  test('Distributor D’s release came two days after it was needed, and the transfer’s date moved after it', () => {
+    const d = records.find((r) => r.on.startsWith('Distributor D'));
+    assert.equal(d.kind, 'EXTERNAL');
+    assert.equal(d.waitedOn, 1);
+    assert.equal(d.late, 1);
+    assert.equal(d.cases[0].daysLate, 2);
+    assert.equal(d.cases[0].datesMovedAfter, 1);
+    assert.match(d.caveat, /too few to read a pattern into/);
+  });
+
+  test('a dependency on another owner’s commitment settles when it is delivered — here, in time', () => {
+    const c = records.find((r) => r.kind === 'COMMITMENT');
+    assert.match(c.on, /Supply Chain Director Vietnam — their commitments/);
+    assert.equal(c.late, 0);
+    assert.ok(c.cases[0].settledAt);
+    assert.equal(c.stillWaiting, 0);
+  });
+
+  test('ordered by name; counts and cases, never a rate', () => {
+    assert.deepEqual(records.map((r) => r.on), [...records.map((r) => r.on)].sort((a, b) => a.localeCompare(b)));
+    assert.equal(records.some((r) => Object.keys(r).some((k) => /rate|score|rank|percent/i.test(k))), false);
+  });
 });

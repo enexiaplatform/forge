@@ -12,7 +12,7 @@
  * party's name. Small samples say so out loud.
  */
 
-import { type Party, sameParty } from './primitives.ts';
+import { daysBetween, type Party, sameParty } from './primitives.ts';
 import type { CommitmentView } from './derive.ts';
 import { varianceOf } from './variance.ts';
 import { type Resolution, resolutions } from './types.ts';
@@ -189,6 +189,86 @@ export function assumptionRecords(views: readonly CommitmentView[]): AssumptionR
         unexamined: cases.length - examined,
         cases,
         caveat: examined < SMALL_SAMPLE ? `${examined === 0 ? 'Never examined' : examined === 1 ? 'Examined once' : `Examined ${examined} times`} — too few to read a pattern into.` : null,
+      };
+    });
+}
+
+// ------------------------------------------------------------- dependencies
+
+/**
+ * What work waited on (§15 "Which dependencies create repeated delays?"; ADR-0029). Each thing commitments waited on —
+ * an outside party or record, a person, or another owner's commitments — with how many times it was waited on, how
+ * many times it came after the date it was needed, and every case: who waited, needed by when, settled when, and
+ * whether the waiting commitment's own date moved after. Counts and cases, never a rate; ordered by name.
+ */
+export type DependencyRecord = {
+  readonly on: string;
+  readonly kind: 'EXTERNAL' | 'PARTY' | 'COMMITMENT';
+  readonly waitedOn: number;
+  readonly late: number;
+  readonly stillWaiting: number;
+  readonly cases: readonly {
+    readonly commitmentId: string;
+    readonly commitment: string;
+    readonly owner: string;
+    readonly description: string;
+    readonly neededBy: string | null;
+    readonly settledAt: string | null;
+    /** Days after the date it was needed — settled late, or still waiting past it; null when not late or no date. */
+    readonly daysLate: number | null;
+    /** Times the waiting commitment's own date moved after the dependency was needed. */
+    readonly datesMovedAfter: number;
+  }[];
+  readonly caveat: string | null;
+};
+
+export function dependencyRecords(views: readonly CommitmentView[]): DependencyRecord[] {
+  const byId = new Map(views.map((v) => [v.record.id, v]));
+  const groups = new Map<string, { kind: DependencyRecord['kind']; cases: DependencyRecord['cases'][number][] }>();
+  for (const v of views) {
+    const today = v.lens.asOf.slice(0, 10);
+    for (const d of v.dependencies) {
+      const on = d.dependency.on;
+      const name =
+        on.kind === 'EXTERNAL'
+          ? `${on.label} (${on.source.system})`
+          : on.kind === 'PARTY'
+            ? on.party.label
+            : `${byId.get(on.commitmentId)?.terms.owner.label ?? 'Another owner'} — their commitments`;
+      const neededBy = d.dependency.neededBy;
+      // A dependency on another commitment settles itself when that commitment is delivered.
+      const upstream = on.kind === 'COMMITMENT' ? byId.get(on.commitmentId) : undefined;
+      const delivered = upstream?.resolution && ['FULFILLED', 'PARTIALLY_FULFILLED'].includes(upstream.resolution.resolution) ? (upstream.outcome?.outcome.achievedOn ?? upstream.resolution.at) : null;
+      const settledAt = d.settled?.at ?? delivered;
+      const settledOn = settledAt ? settledAt.slice(0, 10) : null;
+      const until = settledOn ?? (v.phase === 'CLOSED' ? null : today);
+      const daysLate = neededBy !== null && until !== null && until > neededBy ? daysBetween(neededBy, until) : null;
+      const g = groups.get(name) ?? { kind: on.kind, cases: [] };
+      g.cases.push({
+        commitmentId: v.record.id,
+        commitment: v.terms.statement,
+        owner: v.terms.owner.label,
+        description: d.dependency.description,
+        neededBy,
+        settledAt,
+        daysLate,
+        datesMovedAfter: neededBy === null ? 0 : v.redates.filter((r) => r.at.slice(0, 10) >= neededBy).length,
+      });
+      groups.set(name, g);
+    }
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([on, g]) => {
+      const n = g.cases.length;
+      return {
+        on,
+        kind: g.kind,
+        waitedOn: n,
+        late: g.cases.filter((c) => c.daysLate !== null).length,
+        stillWaiting: g.cases.filter((c) => c.settledAt === null).length,
+        cases: g.cases,
+        caveat: n < SMALL_SAMPLE ? `${n === 1 ? 'Waited on once' : `Waited on ${n} times`} — too few to read a pattern into.` : null,
       };
     });
 }

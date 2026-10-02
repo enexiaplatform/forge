@@ -32,3 +32,4 @@ Each decision, why it was made, and what it costs. Format: context · decision �
 | [0026](0026-what-became-of-the-assumptions.md) | What became of the assumptions: a person says held or broke, with a reason; a broken one asks the principal; across decisions, counts and cases — never a rate |
 | [0027](0027-the-open-door-for-execution-surfaces.md) | The open door: forge.observation.v1 — any surface reports its own records, signed, kept once in a durable ledger, ingested like Helm's and Memoire's |
 | [0028](0028-value-as-claimed-and-as-realized.md) | Value, as claimed and as realized, beside what it took — commitments, people, days; nothing priced, no ratio, no ranking |
+| [0029](0029-what-work-waited-on.md) | What work waited on: each dependency, how often it came after the date it was needed, and every case — never a rate |
