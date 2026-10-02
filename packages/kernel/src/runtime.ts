@@ -65,7 +65,7 @@ import {
   type Terms,
   termFields,
 } from './types.ts';
-import { hasText, joinProtection, type Protection, protectionOf, textCeiling } from './sensitivity.ts';
+import { hasText, joinProtection, type Protection, protectionOf, readableBy, textCeiling } from './sensitivity.ts';
 import { readerKey } from './ledgerCache.ts';
 
 export type ForgeRuntimeDeps = {
@@ -259,7 +259,10 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
         if (!evs.ok) return evs;
         on = { record: rec.value, events: evs.value };
       }
-      const textProtection = hasText(e) ? joinProtection(textCeiling(on.record, on.events), e.textProtection) : [];
+      // ADR-0024: the ceiling, as far as the writer could read it — words carry only what their writer could have seen.
+      // A scope that does not say what its reader is cleared for writes at the full ceiling: unknown is not uncleared.
+      const ceiling = textCeiling(on.record, on.events);
+      const textProtection = hasText(e) ? joinProtection(scope.clearances === undefined ? ceiling : readableBy(scope.clearances, ceiling), e.textProtection) : [];
       const rest = { ...e } as Record<string, unknown>;
       delete rest.textProtection;
       const stamped = (textProtection.length > 0 ? { ...rest, textProtection } : rest) as NewEvent;

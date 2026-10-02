@@ -7,7 +7,7 @@
 import { type Clock, fail, ok, type Result } from './primitives.ts';
 import type { CommitmentFilter, CommitmentStore } from './port.ts';
 import type { CommitmentEvent, CommitmentRecord } from './types.ts';
-import { hasText, readAs, textCeiling, textMeetsCeiling } from './sensitivity.ts';
+import { hasText, readableBy, readAs, textCeiling, textMeetsCeiling } from './sensitivity.ts';
 import { orderEvents } from './derive.ts';
 
 function deepFreeze<T>(v: T): T {
@@ -56,7 +56,8 @@ export function createInMemoryStore(clock: Clock): CommitmentStore & { snapshot(
           batchKeys.add(k);
         }
         // ADR-0017: words are protected at least as well as the commitment they are written on.
-        if (hasText(e) && !textMeetsCeiling(e, textCeiling(rec, [...(byCommitment.get(e.commitmentId) ?? []), ...batch.slice(0, i).filter((x) => x.commitmentId === e.commitmentId)]))) {
+        const before = () => [...(byCommitment.get(e.commitmentId) ?? []), ...batch.slice(0, i).filter((x) => x.commitmentId === e.commitmentId)];
+        if (hasText(e) && !textMeetsCeiling(e, readableBy(scope.clearances, textCeiling(rec, before())))) {
           return fail('event.text_below_ceiling', 'Words written on this commitment must carry every class it rests on; they cannot be stored less protected.');
         }
       }

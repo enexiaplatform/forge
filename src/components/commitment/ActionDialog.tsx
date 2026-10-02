@@ -13,14 +13,18 @@ import {
   type EvidenceRequirement,
   isLive,
   isWatchable,
+  precedentsFor,
+  subjectOf,
   type RealizedValue,
   type Resolution,
   resolutions,
   type Result,
+  readableBy,
   textCeiling,
   verifyOutcome,
 } from '@forge/kernel';
-import { useForge } from '../../forge/ForgeContext';
+import { useForge, useForgeQuery } from '../../forge/ForgeContext';
+import { LessonsThatMayApply } from './Precedents';
 import { Checkbox, Field, Modal, Select, TextArea, TextInput } from '../ui/form';
 import { Button, Notice } from '../ui/primitives';
 import { fmtDate, fmtQuantity, humanize } from '../../lib/format';
@@ -30,7 +34,7 @@ import { RequirementTag } from './tags';
 type Props = { view: CommitmentView; act: AskAct; subject?: string | null; onClose: () => void };
 
 export function ActionDialog({ view, act, subject = null, onClose }: Props) {
-  const { act: run, demo } = useForge();
+  const { act: run, demo, reader } = useForge();
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -143,7 +147,7 @@ export function ActionDialog({ view, act, subject = null, onClose }: Props) {
   })();
 
   // ADR-0017: words written here take the classes this commitment rests on; say so before anyone writes them.
-  const ceiling = textCeiling(view.record, view.events);
+  const ceiling = readableBy(reader.scope.clearances, textCeiling(view.record, view.events));
 
   return (
     <Modal title={title} kicker={kicker} onClose={onClose}>
@@ -182,6 +186,11 @@ function ReasonForm({ placeholder, submitLabel, footer, onSubmit }: { placeholde
 
 function AcceptForm({ view, footer, onSubmit }: { view: CommitmentView; footer: Footer; onSubmit: (evidence: EvidenceRequirement[] | undefined, reason: string | null) => void }) {
   const [refs, setRefs] = useState<Record<string, string>>(() => Object.fromEntries(view.terms.evidence.map((r) => [r.key, r.matcher?.objectRef ?? ''])));
+  // What the enterprise learned the last time — read before taking this on, not after.
+  const reading = useForgeQuery(async (d, scope) => {
+    const all = await d.runtime.list(scope);
+    return all.ok ? precedentsFor(subjectOf(view), all.value) : null;
+  }, [view.record.id]);
   const inferred = view.capture.evidence === 'INFERRED';
   const changed = view.terms.evidence.some((r) => r.matcher && (refs[r.key] ?? '') !== (r.matcher.objectRef ?? ''));
   const evidence = view.terms.evidence.map((r) => (r.matcher && refs[r.key] ? { ...r, matcher: { ...r.matcher, objectRef: refs[r.key].trim() } } : r));
@@ -190,6 +199,7 @@ function AcceptForm({ view, footer, onSubmit }: { view: CommitmentView; footer: 
       <p className="mb-4 text-read text-ink-800">
         You promise <strong className="font-medium">{view.terms.principal.label}</strong>: {view.terms.intendedOutcome} By <span className="font-mono text-meta">{fmtDate(view.terms.dueBy)}</span>.
       </p>
+      {reading && <div className="mb-4"><LessonsThatMayApply reading={reading} /></div>}
       <p className="forge-label mb-2">What will prove it{inferred ? ' — inferred by Forge, confirm or name the object' : ''}</p>
       <div className="mb-4 divide-y divide-ink-200 border-y border-ink-200">
         {view.terms.evidence.map((r) => (

@@ -140,6 +140,24 @@ export function storeConformance(name, setup) {
       assert.equal(l.kind, 'LESSON', 'what kind of thing was said is not withheld');
     });
 
+    test('a writer not cleared for the ceiling writes at what they could read: their words stay readable (ADR-0024)', async () => {
+      const { store, a, a2 } = await setup();
+      const protectedTerms = { ...terms(), measures: [{ key: 'GrossMarginPct', label: 'Gross margin %', comparator: 'AT_LEAST', expected: '32.3878', unit: '%', statement: null, source: { system: 'helm', ref: 'helm:value-node:node-margin@2026-10-01T00:00:00.000Z', url: null }, metricKey: 'GrossMarginPct', protection: ['FINANCIAL_SENSITIVE'] }] };
+      const rec = (await store.insertCommitment(a, newRecord(a, { terms: protectedTerms }))).value;
+      const lesson = newEvent(a2, rec.id, {
+        type: 'LEARNING_RECORDED',
+        payload: { learning: { id: uid('lrn'), kind: 'LESSON', statement: 'Plan QC re-release before the customer date.', appliesTo: 'reallocations of consignment stock' } },
+      });
+      const written = await store.appendEvents(a2, [lesson]);
+      assert.equal(written.ok, true, JSON.stringify(written.error));
+      const theirs = (await store.eventsFor(a2, [rec.id])).value.find((x) => x.id === lesson.id);
+      assert.equal(theirs.payload.learning.statement, lesson.payload.learning.statement, 'the writer reads what they wrote');
+      assert.equal(theirs.textWithheld, undefined);
+      const cleared = await store.appendEvents(a, [newEvent(a, rec.id, { type: 'LEARNING_RECORDED', payload: { learning: { id: uid('lrn'), kind: 'LESSON', statement: 'Margin 31.4 is the floor.', appliesTo: null } } })]);
+      assert.equal(cleared.ok, false, 'a cleared writer still writes at the full ceiling');
+      assert.equal(cleared.error.code, 'event.text_below_ceiling');
+    });
+
     test('the ceiling rises with what the commitment comes to rest on; words written before keep what they had', async () => {
       const { store, a, a2 } = await setup();
       const rec = (await store.insertCommitment(a, newRecord(a))).value;

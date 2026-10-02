@@ -218,7 +218,12 @@ once, as the person, to Helm's own intake host; nothing about delivery is stored
 union; protected values are sealed and read only under Helm's own clearance; an uncleared reader sees that a value
 exists and what status it supports, never the value. Words people write — reasons, explanations, lessons — take the
 **ceiling** of their commitment, the union of every class it rests on when they are written, and are sealed with it
-(ADR-0020); nobody classifies a sentence, and nothing lowers it.
+(ADR-0020) — as far as their writer could read it, since someone never shown a value cannot have quoted it (ADR-0024);
+nobody classifies a sentence, and nothing a cleared writer wrote is lowered.
+
+**Precedents** (ADR-0025): when something begins — a draft at intake, a commitment being accepted — Forge brings back
+the concluded commitments that resemble it, every tie stated, with how they ended and what people said explains it, and
+the lessons whose stated scope names it. The match is INFERENCE; nothing is ranked.
 
 **Execution records** (ADR-0014) show, per owner or principal, what the ledger
 observed — endings, timing against the first promised date, date changes, recurring

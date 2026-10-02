@@ -75,7 +75,7 @@ submitted to Helm's governed intake as contextual facts, adopted into Helm's out
 Helm's genome as a typed, pinned execution episode (ADR-0018) — the whole chain, decision to Helm's learning, in one
 Postgres under Helm's guards (loop 1). Sensitivity never lowers: Helm's classes are carried
 and enforced in Forge (ADR-0017). Each decision shows where execution departed from what Helm committed, as a
-record — never a score (ADR-0019), and those departures travel to Helm with the outcome (Helm ADR-0038). Words people write keep the ceiling of their commitment (ADR-0020). Acts that bind accountability rest on Helm's standing attestation, checked by Forge's database (ADR-0021). Reads stay whole and fast at organization scale (ADR-0022). Outcomes reach Helm through Helm's own intake host, and Memoire's webhooks through Forge's (ADR-0023). 179 unit tests, 46 integration tests,
+record — never a score (ADR-0019), and those departures travel to Helm with the outcome (Helm ADR-0038). Words people write keep the ceiling of their commitment, as far as their writer could read it (ADR-0020, ADR-0024). When something begins, Forge brings back the precedents it resembles and the lessons that may apply (ADR-0025). Acts that bind accountability rest on Helm's standing attestation, checked by Forge's database (ADR-0021). Reads stay whole and fast at organization scale (ADR-0022). Outcomes reach Helm through Helm's own intake host, and Memoire's webhooks through Forge's (ADR-0023). 188 unit tests, 46 integration tests,
 and three contracts, each new rule broken on purpose once and seen to catch it. The
 console is exercised in a browser.
 

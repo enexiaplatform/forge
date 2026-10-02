@@ -27,3 +27,5 @@ Each decision, why it was made, and what it costs. Format: context · decision �
 | [0021](0021-acts-that-bind-accountability-rest-on-helms-standing.md) | Acts that bind accountability rest on Helm's standing attestation; Forge's database binds it to the act; an organization moves to TRUSTED authority on the record |
 | [0022](0022-reading-an-organization-at-scale.md) | Reading at scale: pages and slices so nothing is truncated, a reader's warm ledger, remembered derivations — never stored state |
 | [0023](0023-the-transport-between-the-products.md) | The transport: Forge sends outcomes as the person to Helm's own intake host and derives what is pending; Forge hosts its Memoire receiver |
+| [0024](0024-words-carry-only-what-their-writer-could-read.md) | Words carry only the classes of their commitment's ceiling that their writer could read — a cleared writer is sealed as before |
+| [0025](0025-precedents-bring-lessons-back.md) | Precedents: concluded commitments that resemble this one, and lessons that may apply, as labelled inference — never ranked |

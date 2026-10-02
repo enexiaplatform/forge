@@ -5,8 +5,9 @@
  */
 import { useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
-import type { TermField } from '@forge/kernel';
-import { type DraftCommitment, draftFromHelm, type FieldState, type IntakeEdits, proposeIntake } from '@forge/fabric';
+import { type CommitmentView, precedentsFor, type TermField } from '@forge/kernel';
+import { type DraftCommitment, draftFromHelm, draftSubject, type FieldState, type IntakeEdits, proposeIntake } from '@forge/fabric';
+import { LessonsThatMayApply } from '../components/commitment/Precedents';
 import { AppShell } from '../components/shell/AppShell';
 import { CaptureTag, EpistemicTag } from '../components/commitment/tags';
 import { ContextList } from '../components/commitment/sections';
@@ -28,7 +29,7 @@ const LABELS: Record<TermField, string> = {
   value: 'Why it matters',
 };
 
-function DraftCard({ draft, edits, setEdit }: { draft: DraftCommitment; edits: IntakeEdits; setEdit: (key: string, field: 'intendedOutcome' | 'dueBy', value: string) => void }) {
+function DraftCard({ draft, edits, setEdit, ledger }: { draft: DraftCommitment; edits: IntakeEdits; setEdit: (key: string, field: 'intendedOutcome' | 'dueBy', value: string) => void; ledger: readonly CommitmentView[] }) {
   const t = draft.input.terms;
   const value = (f: TermField) => {
     switch (f) {
@@ -76,6 +77,7 @@ function DraftCard({ draft, edits, setEdit }: { draft: DraftCommitment; edits: I
           <span>{n.text}</span>
         </p>
       ))}
+      <LessonsThatMayApply reading={precedentsFor(draftSubject(draft), ledger)} />
     </article>
   );
 }
@@ -88,9 +90,10 @@ export function IntakePage() {
   const [error, setError] = useState<string | null>(null);
   const data = useForgeQuery(async (d, scope) => {
     const entry = (await loadDecisions(d, scope)).find((x) => x.ref === ref) ?? null;
-    if (!entry) return { entry: null, draft: null };
+    if (!entry) return { entry: null, draft: null, ledger: [] };
     const draft = await draftFromHelm(scope, entry.decision, { memoire: d.memoire });
-    return { entry, draft: draft.ok ? draft.value : null };
+    const ledger = await d.runtime.list(scope);
+    return { entry, draft: draft.ok ? draft.value : null, ledger: ledger.ok ? ledger.value : [] };
   }, [ref]);
   if (!data) return <AppShell>{null}</AppShell>;
   if (!data.entry || !data.draft) return <AppShell><Empty>Forge cannot draft from that decision.</Empty></AppShell>;
@@ -122,7 +125,7 @@ export function IntakePage() {
             <Section>
               <SectionHead title={`${all.length} commitments, one tree`} aside={`${draft.friction.inherited} inherited · ${draft.friction.inferred} inferred · ${draft.friction.missing} missing`} />
               {all.map((d) => (
-                <DraftCard key={d.key} draft={d} edits={edits} setEdit={(key, field, value) => setEdits({ ...edits, [key]: { ...edits[key], [field]: value } })} />
+                <DraftCard key={d.key} draft={d} ledger={data.ledger} edits={edits} setEdit={(key, field, value) => setEdits({ ...edits, [key]: { ...edits[key], [field]: value } })} />
               ))}
             </Section>
             {error && (

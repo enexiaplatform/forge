@@ -4,7 +4,7 @@
  * was learned — with its asks on top and its full history underneath.
  */
 import { Link, useParams } from 'react-router-dom';
-import { type CommitmentView, conditionsOf } from '@forge/kernel';
+import { type CommitmentView, conditionsOf, precedentsFor, subjectOf } from '@forge/kernel';
 import { AppShell } from '../components/shell/AppShell';
 import { ChainStrip } from '../components/commitment/ChainStrip';
 import { ConditionRow } from '../components/commitment/ConditionRow';
@@ -13,6 +13,7 @@ import { availableActs } from '../components/commitment/acts';
 import { DueDate, EvidenceSummary } from '../components/commitment/CommitmentRow';
 import { ContextList, EvidenceSection, ExecutionSection, HistorySection, LearningSection, OutcomeSection, PromiseSection, WhySection } from '../components/commitment/sections';
 import { PhaseTag } from '../components/commitment/tags';
+import { PrecedentsSection } from '../components/commitment/Precedents';
 import { Button, Empty, Kicker, Mono, Panel, Section, SectionHead, TwoColumn } from '../components/ui/primitives';
 import { useForge, useForgeQuery } from '../forge/ForgeContext';
 import { loadLedger } from '../forge/queries';
@@ -42,6 +43,7 @@ export function CommitmentPage() {
   const conditions = conditionsOf(view, lookup);
   const children = data.ledger.views.filter((v) => v.record.parentId === view.record.id);
   const acts = availableActs(view, reader.scope);
+  const precedents = precedentsFor(subjectOf(view), data.ledger.views);
   const demoLabel = view.record.origin.snapshot && (view.record.origin.snapshot as { demo?: boolean }).demo ? ' · DEMO' : '';
 
   return (
@@ -75,6 +77,7 @@ export function CommitmentPage() {
             )}
             <WhySection view={view} ancestors={data.ancestors} />
             <PromiseSection view={view} />
+            <PrecedentsSection reading={precedents} />
             <ExecutionSection view={view} lookup={lookup} />
             <EvidenceSection view={view} />
             <OutcomeSection view={view} />

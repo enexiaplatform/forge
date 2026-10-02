@@ -139,11 +139,14 @@ for (const f of code) {
 
 // Execution records are observed facts: nothing in them, or in how they are shown, is a score, a rank or a rating.
 // Decision fidelity is a record of the same kind: departures, never a fidelity score or rate.
+// Precedents are records of the same kind: what resembles a commitment, ordered by time, never by likeness or ending.
 const RECORD_FILES = code.filter(
   (f) =>
     /packages[\\/]kernel[\\/]src[\\/]records\.ts$/.test(f) ||
     /src[\\/]components[\\/]records[\\/]/.test(f) ||
     /packages[\\/]fabric[\\/]src[\\/]fidelity\.ts$/.test(f) ||
+    /packages[\\/]kernel[\\/]src[\\/]precedents\.ts$/.test(f) ||
+    /src[\\/]components[\\/]commitment[\\/]Precedents\.tsx$/.test(f) ||
     /src[\\/]components[\\/]commitment[\\/]Fidelity\.tsx$/.test(f),
 );
 if (RECORD_FILES.length === 0) fail('records-are-not-scores', root, 'the records code was not found to check');

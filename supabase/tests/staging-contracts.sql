@@ -188,8 +188,14 @@ BEGIN
   IF n <> 1 THEN RAISE EXCEPTION 'STAGING CONTRACT FAILED: words: an uncleared reader cannot see that a reason was given, or read the words'; END IF;
   SELECT count(*) INTO n FROM public.forge_sealed_values WHERE event_id = 'fe_' || run || '_said';
   IF n <> 0 THEN RAISE EXCEPTION 'STAGING CONTRACT FAILED: words: a reader without Helm clearance read a sealed reason'; END IF;
+  -- ADR-0024: a writer Helm never cleared for the margin cannot have quoted it; their words are stored open.
+  INSERT INTO public.forge_commitment_events (id, org_id, commitment_id, event_type, effective_at, actor, reason, payload)
+    VALUES ('fe_' || run || '_uncleared', org_a, fc, 'CONTEXT_REAFFIRMED', now(), jsonb_build_object('kind', 'PERSON', 'id', cd, 'label', 'Commercial Director (SYNTHETIC)'),
+      'Rohto confirmed the installation window (SYNTHETIC).', jsonb_build_object('contextEventId', 'none'));
+  SELECT count(*) INTO n FROM public.forge_commitment_events WHERE id = 'fe_' || run || '_uncleared' AND reason LIKE 'Rohto confirmed%';
+  IF n <> 1 THEN RAISE EXCEPTION 'STAGING CONTRACT FAILED: words: an uncleared writer could not read the words they wrote'; END IF;
   RESET ROLE;
-  INSERT INTO forge_staging_results (contract, detail) VALUES ('words at their ceiling', 'a reason below its commitment''s ceiling refused; at it, sealed and read only under Helm''s clearance');
+  INSERT INTO forge_staging_results (contract, detail) VALUES ('words at their ceiling', 'a reason below what its writer could read refused; at it, sealed under Helm''s clearance; an uncleared writer''s words stay open');
 
   -- ------------------------------------------- 6c. acts bound to Helm's standing
   -- A consequential event that claims a trusted verdict must name Helm's attestation for the person who holds the act.

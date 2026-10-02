@@ -25,6 +25,7 @@ import {
   ok,
   type Origin,
   type OutcomeMeasure,
+  type PrecedentSubject,
   type ProposeInput,
   type Result,
   type Scope,
@@ -58,6 +59,16 @@ export type IntakeDraft = {
   /** What the draft asked of people, counted: inherited and inferred against missing. */
   readonly friction: { readonly inherited: number; readonly inferred: number; readonly missing: number };
 };
+
+/** A drafted commitment as precedents read it (`precedentsFor`): it has no id yet, and answers to the decision. */
+export const draftSubject = (d: DraftCommitment): PrecedentSubject => ({
+  id: null,
+  originRef: d.input.origin.ref,
+  terms: d.input.terms,
+  context: d.input.context ?? [],
+  dependencies: d.input.dependencies ?? [],
+  links: (d.input.links ?? []).map((l) => ({ system: l.system, ref: l.ref })),
+});
 
 export type IntakeDeps = {
   readonly memoire?: MemoireContextReader;

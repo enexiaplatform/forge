@@ -153,6 +153,13 @@ export function textCeiling(record: Pick<CommitmentRecord, 'terms'>, events: rea
   );
 }
 
+/**
+ * The classes a writer's words can carry (ADR-0024): the commitment's ceiling, but only the classes the writer could
+ * read. Someone Forge — and Helm, whose clearance it is — never showed a protected value cannot have quoted it; their
+ * words are not derived from it. Someone cleared writes at the full ceiling, as before.
+ */
+export const readableBy = (clearance: Clearance | undefined, p: Protection): Protection => p.filter((c) => isCleared(clearance, [c]));
+
 /** Whether an event's words are protected at least as well as the commitment they are written on. */
 export function textMeetsCeiling(e: Sealable, ceiling: Protection): boolean {
   if (!hasText(e)) return true;
