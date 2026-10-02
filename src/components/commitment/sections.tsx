@@ -356,6 +356,12 @@ export function LearningSection({ view }: { view: CommitmentView }) {
               {l.actor.label} · {fmtMoment(l.at)}
               {l.learning.appliesTo && <> · applies to {l.learning.appliesTo}</>}
             </p>
+            {l.learning.drawnFrom && (
+              <p className="mt-0.5 text-meta text-ink-500">
+                drawn from {l.learning.drawnFrom.label}
+                {l.learning.drawnFrom.locator && <>, {l.learning.drawnFrom.locator}</>}: <span className="italic">“{l.learning.drawnFrom.quote}”</span>
+              </p>
+            )}
           </div>
         ))
       )}

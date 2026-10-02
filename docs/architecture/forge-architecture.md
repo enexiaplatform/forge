@@ -200,6 +200,9 @@ Two ports, both proposing and neither deciding.
   removes anything not verbatim in the notes, never proposes discussion, requests or
   intentions, and matches owners only to people Forge knows. Survivors become
   candidates; a person confirms, edits or dismisses (ADR-0009).
+- The **learning reader** (`fabric/learningExtraction.ts`, ADR-0030) reads a review's notes in the dialog where a person
+  records a learning, and proposes the notes' own explanations and lessons — governed by `governLearnings`, kept only in
+  the dialog; the person records one as theirs, and it remembers the notes and line it was drawn from.
 
 Every statement Forge shows carries one of six classes: FACT, INFERENCE, ASSUMPTION,
 PREDICTION, RECOMMENDATION, DECISION.

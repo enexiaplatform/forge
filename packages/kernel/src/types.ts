@@ -350,6 +350,8 @@ export type Learning = {
   readonly statement: string;
   /** Where it should apply next time, in words: 'transfers of consignment stock'. */
   readonly appliesTo: string | null;
+  /** The notes it was drawn from, when a person took it from a review Forge read (ADR-0030): the words, and where. */
+  readonly drawnFrom?: { readonly ref: string; readonly label: string; readonly quote: string; readonly locator: string | null };
 };
 
 // -------------------------------------------------------------- assumptions

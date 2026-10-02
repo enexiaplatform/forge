@@ -33,3 +33,4 @@ Each decision, why it was made, and what it costs. Format: context · decision �
 | [0027](0027-the-open-door-for-execution-surfaces.md) | The open door: forge.observation.v1 — any surface reports its own records, signed, kept once in a durable ledger, ingested like Helm's and Memoire's |
 | [0028](0028-value-as-claimed-and-as-realized.md) | Value, as claimed and as realized, beside what it took — commitments, people, days; nothing priced, no ratio, no ranking |
 | [0029](0029-what-work-waited-on.md) | What work waited on: each dependency, how often it came after the date it was needed, and every case — never a rate |
+| [0030](0030-reading-a-review-for-what-it-taught.md) | Reading a review: Forge proposes the notes' own explanations and lessons as inference; a person records one, and it remembers where it came from |

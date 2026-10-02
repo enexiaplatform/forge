@@ -24,3 +24,4 @@ export * from './helmAuthority.ts';
 export * from './helmTransport.ts';
 export * from './observationContract.ts';
 export * from './observationLedger.ts';
+export * from './learningExtraction.ts';

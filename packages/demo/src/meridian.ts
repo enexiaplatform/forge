@@ -289,6 +289,22 @@ export const QC_REVIEW_NOTES: ExtractionInput = {
   ],
 };
 
+/** The Rohto outcome review, 20 November (DEMO). Forge reads it for explanations and lessons a person may record. */
+export const OUTCOME_REVIEW_NOTES = {
+  source: { kind: 'MEETING_NOTES' as const, system: 'notes', ref: 'notes:rohto-outcome-review-2026-11-20', label: 'Rohto outcome review — 20 Nov (DEMO)', heldOn: '2026-11-20' },
+  text: [
+    'Rohto outcome review — 20 November 2026',
+    'Attendees: Linh Tran, Minh Pham, An Vo, Hoa Nguyen',
+    '',
+    '- An: Margin landed under the committed future because re-labelling and QC rework were not in the transfer cost Helm modelled.',
+    '- Minh: The two late units were held because consignment stock coming back from a distributor needs a QC re-release; the plan treated it as shippable on receipt.',
+    '- Hoa: Rohto raised the late units at the renewal meeting but did not make them a condition of the framework.',
+    '- Minh: Next time we reallocate consignment stock, plan two to four working days of QC re-release before the customer date.',
+    '- An: Going forward, quote re-labelling in the transfer cost for every reallocation of consignment stock.',
+    '- Linh: Thanks all for getting the twelve units there.',
+  ].join('\n'),
+};
+
 // ----------------------------------------------------- execution surfaces
 
 const ROHTO_OPP = 'memoire:opportunity:rohto-q4-tender';

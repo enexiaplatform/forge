@@ -169,7 +169,8 @@ export function textMeetsCeiling(e: Sealable, ceiling: Protection): boolean {
   return ceiling.every((c) => declared.includes(c));
 }
 
-type LearningPayload = { readonly learning: { readonly statement: string; readonly appliesTo: string | null } };
+type DrawnFrom = { readonly ref: string; readonly label: string; readonly quote: string; readonly locator: string | null };
+type LearningPayload = { readonly learning: { readonly statement: string; readonly appliesTo: string | null; readonly drawnFrom?: DrawnFrom } };
 
 /** Split an event's words: the open event with them replaced by a sentence saying so, and the words themselves. */
 function sealText<E extends Sealable>(e: E, p: Protection): { open: E; sealed: Sealed } {
@@ -177,8 +178,10 @@ function sealText<E extends Sealable>(e: E, p: Protection): { open: E; sealed: S
   let open = { ...e, reason: e.reason ? withheldText(p) : (e.reason ?? null), textWithheld: p } as E;
   if (e.type === 'LEARNING_RECORDED') {
     const l = (e.payload as LearningPayload).learning;
-    sealed.learning = { statement: l.statement, appliesTo: l.appliesTo };
-    open = { ...open, payload: { ...(e.payload as object), learning: { ...l, statement: withheldText(p), appliesTo: null } } } as E;
+    sealed.learning = { statement: l.statement, appliesTo: l.appliesTo, ...(l.drawnFrom ? { drawnFrom: l.drawnFrom } : {}) };
+    // The words it was drawn from are words too: which notes is said, what they said is sealed with the learning.
+    const drawnFrom = l.drawnFrom ? { ...l.drawnFrom, quote: withheldText(p) } : undefined;
+    open = { ...open, payload: { ...(e.payload as object), learning: { ...l, statement: withheldText(p), appliesTo: null, ...(drawnFrom ? { drawnFrom } : {}) } } } as E;
   }
   return { open, sealed };
 }
@@ -190,7 +193,7 @@ function unsealText<E extends Sealable>(open: E, text: Readonly<Record<string, u
   if (open.type === 'LEARNING_RECORDED' && text.learning) {
     const l = text.learning as LearningPayload['learning'];
     const learning = (open.payload as LearningPayload).learning;
-    e = { ...e, payload: { ...(open.payload as object), learning: { ...learning, statement: l.statement, appliesTo: l.appliesTo } } } as E;
+    e = { ...e, payload: { ...(open.payload as object), learning: { ...learning, statement: l.statement, appliesTo: l.appliesTo, ...(l.drawnFrom ? { drawnFrom: l.drawnFrom } : {}) } } } as E;
   }
   return e;
 }

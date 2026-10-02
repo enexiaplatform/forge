@@ -26,6 +26,8 @@ import {
 } from '@forge/kernel';
 import { useForge, useForgeQuery } from '../../forge/ForgeContext';
 import { LessonsThatMayApply } from './Precedents';
+import { ReadReview } from './ReadReview';
+import type { DrawnFrom } from '@forge/fabric';
 import { Checkbox, Field, Modal, Select, TextArea, TextInput } from '../ui/form';
 import { Button, Notice } from '../ui/primitives';
 import { fmtDate, fmtQuantity, humanize } from '../../lib/format';
@@ -130,7 +132,7 @@ export function ActionDialog({ view, act, subject = null, onClose }: Props) {
       case 'RECORD_OUTCOME':
         return <OutcomeForm view={view} footer={footer} demoLedger={demo.ledger} onSubmit={(outcome) => submit((s, d) => d.runtime.recordOutcome(s, id, outcome), () => null)} />;
       case 'RECORD_LEARNING':
-        return <LearningForm footer={footer} onSubmit={(input) => submit((s, d) => d.runtime.recordLearning(s, id, input), () => null)} />;
+        return <LearningForm view={view} demo={view.record.origin.snapshot !== null && (view.record.origin.snapshot as { demo?: boolean }).demo === true} footer={footer} onSubmit={(input) => submit((s, d) => d.runtime.recordLearning(s, id, input), () => null)} />;
       case 'ASSESS_ASSUMPTION':
         return (
           <AssessForm
@@ -633,12 +635,42 @@ function OutcomeForm({ view, footer, onSubmit, demoLedger }: { view: CommitmentV
   );
 }
 
-function LearningForm({ footer, onSubmit }: { footer: Footer; onSubmit: (input: { kind: 'EXPLANATION' | 'LESSON'; statement: string; appliesTo: string | null }) => void }) {
+function LearningForm({
+  view,
+  demo,
+  footer,
+  onSubmit,
+}: {
+  view: CommitmentView;
+  demo: boolean;
+  footer: Footer;
+  onSubmit: (input: { kind: 'EXPLANATION' | 'LESSON'; statement: string; appliesTo: string | null; drawnFrom?: DrawnFrom }) => void;
+}) {
   const [kind, setKind] = useState<'EXPLANATION' | 'LESSON'>('LESSON');
   const [statement, setStatement] = useState('');
   const [appliesTo, setAppliesTo] = useState('');
+  const [drawnFrom, setDrawnFrom] = useState<DrawnFrom | null>(null);
   return (
     <>
+      <ReadReview
+        view={view}
+        demo={demo}
+        onUse={(p) => {
+          setKind(p.kind);
+          setStatement(p.statement);
+          setAppliesTo(p.appliesTo ?? '');
+          setDrawnFrom(p.drawnFrom);
+        }}
+      />
+      {drawnFrom && (
+        <p className="mb-3 text-meta text-ink-500">
+          Drawn from {drawnFrom.label}
+          {drawnFrom.locator && <>, {drawnFrom.locator}</>} — recorded as yours, remembering where it came from.{' '}
+          <button type="button" className="text-accent-700 hover:underline" onClick={() => setDrawnFrom(null)}>
+            Forget the source
+          </button>
+        </p>
+      )}
       <Field label="Kind">
         <Select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
           <option value="EXPLANATION">Explanation — why it differed</option>
@@ -653,7 +685,9 @@ function LearningForm({ footer, onSubmit }: { footer: Footer; onSubmit: (input: 
           <TextInput value={appliesTo} onChange={(e) => setAppliesTo(e.target.value)} placeholder="e.g. reallocations of consignment stock" />
         </Field>
       )}
-      <FormFooter>{footer('Record', () => onSubmit({ kind, statement, appliesTo: appliesTo.trim() || null }), statement.trim() === '')}</FormFooter>
+      <FormFooter>
+        {footer('Record', () => onSubmit({ kind, statement, appliesTo: appliesTo.trim() || null, ...(drawnFrom ? { drawnFrom } : {}) }), statement.trim() === '')}
+      </FormFooter>
     </>
   );
 }

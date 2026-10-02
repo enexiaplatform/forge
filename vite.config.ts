@@ -13,6 +13,12 @@ function forgeExtractApi(): Plugin {
   return {
     name: 'forge-extract-api',
     configureServer(server) {
+      server.middlewares.use('/api/extract-learnings', (req, res, next) => {
+        server
+          .ssrLoadModule('/server/extraction/http.ts')
+          .then((m) => m.handleExtractLearnings(req, res))
+          .catch(next);
+      });
       server.middlewares.use('/api/extract', (req, res, next) => {
         server
           .ssrLoadModule('/server/extraction/http.ts')

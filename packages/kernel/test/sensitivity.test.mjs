@@ -127,6 +127,18 @@ describe('words keep the ceiling of the commitment they are written on', () => {
     assert.deepEqual(unwrap(await env.runtime.episode(hr, id)).protection, ['HR_RESTRICTED'], 'the episode quoting it carries its class, so Helm receives it at least as protected');
   });
 
+  test('a learning drawn from notes keeps its source; the quoted words are sealed with it, which notes is said (ADR-0030)', async () => {
+    const env = setup();
+    const id = unwrap(await env.runtime.propose(cleared, { origin: helmOrigin, terms: outcomeTerms })).record.id;
+    const drawnFrom = { ref: 'notes:review', label: 'Outcome review', quote: 'Margin fell to 31.4 because of re-labelling.', locator: 'line 4' };
+    unwrap(await env.runtime.recordLearning(cleared, id, { kind: 'EXPLANATION', statement: 'Re-labelling took margin to 31.4.', appliesTo: null, drawnFrom }));
+    assert.deepEqual(unwrap(await env.runtime.view(cleared, id)).learnings[0].learning.drawnFrom, drawnFrom);
+    const theirs = unwrap(await env.runtime.view(scm, id)).learnings[0].learning;
+    assert.equal(theirs.drawnFrom.label, 'Outcome review');
+    assert.equal(theirs.drawnFrom.locator, 'line 4');
+    assert.doesNotMatch(JSON.stringify(theirs), /31\.4/);
+  });
+
   test('a writer cannot lower words below the ceiling: the store refuses what the runtime would never write', async () => {
     const env = setup();
     const id = unwrap(await env.runtime.propose(cleared, { origin: helmOrigin, terms: outcomeTerms })).record.id;
