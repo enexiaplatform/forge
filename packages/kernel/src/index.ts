@@ -17,6 +17,7 @@ export * from './publication.ts';
 export * from './candidates.ts';
 export * from './records.ts';
 export * from './precedents.ts';
+export * from './value.ts';
 export * from './sensitivity.ts';
 export * from './port.ts';
 export * from './inMemoryStore.ts';

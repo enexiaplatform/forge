@@ -146,6 +146,7 @@ const RECORD_FILES = code.filter(
     /src[\\/]components[\\/]records[\\/]/.test(f) ||
     /packages[\\/]fabric[\\/]src[\\/]fidelity\.ts$/.test(f) ||
     /packages[\\/]kernel[\\/]src[\\/]precedents\.ts$/.test(f) ||
+    /packages[\\/]kernel[\\/]src[\\/]value\.ts$/.test(f) ||
     /src[\\/]components[\\/]commitment[\\/]Precedents\.tsx$/.test(f) ||
     /src[\\/]components[\\/]commitment[\\/]Fidelity\.tsx$/.test(f),
 );

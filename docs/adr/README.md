@@ -31,3 +31,4 @@ Each decision, why it was made, and what it costs. Format: context · decision �
 | [0025](0025-precedents-bring-lessons-back.md) | Precedents: concluded commitments that resemble this one, and lessons that may apply, as labelled inference — never ranked |
 | [0026](0026-what-became-of-the-assumptions.md) | What became of the assumptions: a person says held or broke, with a reason; a broken one asks the principal; across decisions, counts and cases — never a rate |
 | [0027](0027-the-open-door-for-execution-surfaces.md) | The open door: forge.observation.v1 — any surface reports its own records, signed, kept once in a durable ledger, ingested like Helm's and Memoire's |
+| [0028](0028-value-as-claimed-and-as-realized.md) | Value, as claimed and as realized, beside what it took — commitments, people, days; nothing priced, no ratio, no ranking |

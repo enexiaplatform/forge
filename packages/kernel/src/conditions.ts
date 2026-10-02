@@ -52,6 +52,7 @@ export const conditionCodes = [
   'LEARNING_OPEN',
   'OUTCOME_UNPUBLISHED',
   'ASSUMPTIONS_UNEXAMINED',
+  'VALUE_UNSTATED',
 ] as const;
 export type ConditionCode = (typeof conditionCodes)[number];
 
@@ -260,6 +261,21 @@ export function conditionsOf(v: CommitmentView, lookup: ViewLookup = () => null)
           v.resolution ? [v.resolution.eventId] : [id],
         ),
         { whom: principal, question: 'Now that it has ended: which assumptions held, and which broke?', acts: ['ASSESS_ASSUMPTION'], subject: unexamined[0].key },
+      );
+    }
+  }
+
+  // §17: what a decision was meant to create or protect is asked about once, at its root, after the outcome is in —
+  // noted, and never where what was said is only withheld from this reader (ADR-0028).
+  if (v.phase === 'CLOSED' && v.record.parentId === null && v.outcome !== null && (v.outcome.outcome.withheld?.length ?? 0) === 0) {
+    const said = new Set(v.outcome.outcome.realizedValue.map((r) => r.dimension));
+    const unsaid = [...new Set(v.terms.value.map((c) => c.dimension))].filter((d) => !said.has(d));
+    if (unsaid.length > 0) {
+      add(
+        'VALUE_UNSTATED',
+        'NOTED',
+        fact(`Nobody has said what became of the ${unsaid.map((d) => d.toLowerCase().replace(/_/g, ' ')).join(' and ')} value it was meant to create or protect.`, [v.outcome.eventId]),
+        { whom: principal, question: 'What value did it actually create, protect, delay or destroy?', acts: ['RECORD_OUTCOME'], subject: null },
       );
     }
   }
