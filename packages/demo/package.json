@@ -1,0 +1,17 @@
+{
+  "name": "@forge/demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DEMO: Meridian Life Sciences Vietnam after Helm's Rohto decision — Helm read models, execution surfaces and the story as moments.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "forge": {
+    "layer": "demo"
+  },
+  "dependencies": {
+    "@forge/kernel": "0.1.0",
+    "@forge/fabric": "0.1.0"
+  }
+}

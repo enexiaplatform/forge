@@ -1,0 +1,16 @@
+{
+  "name": "@forge/kernel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Forge kernel: the commitment, its append-only events, and everything derived from them \u2014 phase, terms, evidence, conditions, variance, authority, episodes.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./postgres": "./src/postgres.ts"
+  },
+  "forge": {
+    "layer": "kernel",
+    "ioBoundary": "src/postgres.ts"
+  },
+  "dependencies": {}
+}

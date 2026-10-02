@@ -1,0 +1,16 @@
+{
+  "name": "@forge/fabric",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Forge fabric: Helm and Memoire read models, intake from committed decisions, execution surfaces, observation ingestion, and the events Forge publishes for Helm.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "forge": {
+    "layer": "fabric"
+  },
+  "dependencies": {
+    "@forge/kernel": "0.1.0"
+  }
+}
