@@ -79,13 +79,16 @@ const hexToBytes = (hex: string): Uint8Array<ArrayBuffer> => {
  * Verify Memoire's signature: `Memoire-Signature: v1=<hex HMAC-SHA256(secret, "<timestamp>.<body>")>`, with
  * `Memoire-Timestamp` (Unix seconds) within five minutes of now. WebCrypto's HMAC verify compares in constant time.
  */
-export async function verifyMemoireSignature(input: { secret: string; timestamp: string; body: string; signature: string; nowSeconds: number }): Promise<boolean> {
+export async function verifyHmacV1(input: { secret: string; timestamp: string; body: string; signature: string; nowSeconds: number }): Promise<boolean> {
   const { secret, timestamp, body, signature, nowSeconds } = input;
   if (secret.length < 32 || !/^\d{10}$/.test(timestamp) || Math.abs(nowSeconds - Number(timestamp)) > 300 || !/^v1=[a-f0-9]{64}$/.test(signature)) return false;
   const enc = new TextEncoder();
   const key = await globalThis.crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
   return globalThis.crypto.subtle.verify('HMAC', key, hexToBytes(signature.slice(3)), enc.encode(`${timestamp}.${body}`));
 }
+
+/** Memoire's webhooks v1 use the shared v1 signature (`verifyHmacV1`), as forge.observation.v1 does. */
+export const verifyMemoireSignature = verifyHmacV1;
 
 /** Where notifications are deduplicated. Durable in production — a receiver that forgets will re-read, safely. */
 export interface NotificationInbox {

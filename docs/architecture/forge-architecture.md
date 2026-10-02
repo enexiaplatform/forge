@@ -139,6 +139,11 @@ through one port; it reports **observations** (`fabric/surfaces.ts`). Ingestion
 
 Everything is recorded by the source's connector as a SYSTEM actor, idempotently.
 
+**The open door** (ADR-0027): any surface without a Forge connector reports through `forge.observation.v1` — one signed
+envelope of its own records ([contract](../contracts/forge-observation-v1.md)). Each observation is kept once in the
+durable ledger (`forge_observations`, service role only, read under Helm's clearance) whether or not anything waits for
+it, and ingested by the same four questions.
+
 ## 8. Authority (§16)
 
 Forge has no permission philosophy of its own. Authority is a **port**
@@ -284,7 +289,8 @@ Each new rule was broken on purpose and seen to catch it.
   in the integration suite; neither edge function is deployed, and the Memoire receiver has no deployed wrapper.
 - **Live services.** Supabase Auth, PostgREST, Memoire's deployed API and webhook
   delivery over the network, and the Claude API itself (opt-in test only).
-- **Execution surfaces.** Jira, ERP, WMS, SCM remain fixtures; no connector service runs.
+- **Execution surfaces.** Any system can report through `forge.observation.v1` (ADR-0027), proven in tests; no
+  endpoint is deployed, and the demo's Jira, ERP, WMS and SCM remain fixtures.
 - **Scale, first reading.** A warm reader catches up in milliseconds (ADR-0022); the first reading by each reader still
   reads the whole organization.
 

@@ -65,6 +65,10 @@ export function SurfacesPage() {
             })}
           </tbody>
         </table>
+        <p className="mt-3 max-w-reading text-meta text-ink-600">
+          Any other system reports through one open, signed contract, <span className="font-mono">forge.observation.v1</span>: its own records only, each kept once, never a
+          status. Forge writes no connector for it — the system’s team does, in a few lines.
+        </p>
       </Section>
 
       <Section>
