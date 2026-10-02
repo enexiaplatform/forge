@@ -5,7 +5,7 @@
 import { test, describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { unwrap } from '@forge/kernel';
-import { decisionFidelity, departureKinds, HELM_ACTION_INTENT_CONTEXT, helmActionIntentRef } from '@forge/fabric';
+import { decisionFidelity, departureKinds, HELM_ACTION_INTENT_CONTEXT, helmActionIntentRef, toHelmExecutionOutcome } from '@forge/fabric';
 import { createMeridianDemo, HELM_DECISIONS, MOMENTS, ROHTO_DECISION } from '@forge/demo';
 
 describe('decision fidelity — the Meridian story', () => {
@@ -49,6 +49,21 @@ describe('decision fidelity — the Meridian story', () => {
     assert.match(transfer.authority.approvedBy, /Country GM/);
     assert.match(transfer.authority.approvalReason, /Rohto’s 15 October date still holds/);
     assert.equal(transfer.authority.trusted, false, 'Forge’s interim policy, said so — not Helm’s authority');
+  });
+
+  test('each departure carries its commitment’s classes, and the submission to Helm carries them all (Helm ADR-0038)', async () => {
+    const f = fidelity('outcome');
+    const short = f.departures.find((d) => d.kind === 'ENDED_SHORT');
+    assert.deepEqual(short.protection, ['FINANCIAL_SENSITIVE'], 'the outcome commitment is measured by margin');
+    const transfer = f.departures.find((d) => d.kind === 'REDATED' && d.commitmentId === demo.refs.transfer);
+    assert.deepEqual(transfer.protection, [], 'the transfer rests on nothing protected');
+    const cleared = { ...gm, clearances: 'ALL' };
+    const view = unwrap(await demo.runtime.view(cleared, demo.refs.outcome));
+    const publication = view.publications.at(-1)?.publication ?? unwrap(await demo.runtime.publishOutcome(cleared, demo.refs.outcome)).publication;
+    const submission = toHelmExecutionOutcome(publication, { orgId: gm.orgId, publishedByLabel: 'Country GM Vietnam', authority: null, departures: f.departures });
+    assert.equal(submission.departures.length, f.departures.length);
+    assert.ok(submission.departures.every((d) => d.sensitivity.every((c) => submission.sensitivity.includes(c))), 'never less protected than what it states');
+    assert.equal(submission.departures.find((d) => d.kind === 'ENDED_SHORT').reason, short.reason);
   });
 
   test('ownership is not assignment: until the owners accept, the decision is not yet owned', () => {

@@ -12,7 +12,7 @@
  * percentage, no rating, no ranking (ADR-0014).
  */
 
-import { type CommitmentView, daysBetween, decimalCompare, isDecimal, type Party } from '@forge/kernel';
+import { type CommitmentView, daysBetween, decimalCompare, isDecimal, type Party, type Protection, textCeiling } from '@forge/kernel';
 import { helmCommitmentRef, type HelmActionIntent, type HelmCommittedDecision, type HelmExpectedOutcome } from './helm.ts';
 
 /** The context field intake writes on a commitment drafted from a Helm action intent: the intent, by reference. */
@@ -47,6 +47,11 @@ export type Departure = {
   readonly reason: string | null;
   /** The authority the act rested on, as recorded: whose policy, whether it was Helm's, and who approved it. */
   readonly authority: { readonly statement: string; readonly trusted: boolean; readonly approvedBy: string | null; readonly approvalReason: string | null } | null;
+  /**
+   * The classes the departure carries wherever it goes (ADR-0017, ADR-0020): its commitment's ceiling — a reason, an
+   * approval's reason or a moved target can state a protected value. Empty for what holds from the start.
+   */
+  readonly protection: Protection;
 };
 
 export type DecisionFidelity = {
@@ -111,8 +116,9 @@ const partyLabel = (p: Party) => p.label;
 export function decisionFidelity(hc: HelmCommittedDecision, views: readonly CommitmentView[], later: readonly HelmCommittedDecision[] = []): DecisionFidelity {
   const ref = helmCommitmentRef(hc.commitment.id);
   const tree = views.filter((v) => v.record.origin.ref === ref);
-  const structural: Departure[] = [];
-  const dated: Departure[] = [];
+  // Found first, then given the classes they carry.
+  const structural: Omit<Departure, 'protection'>[] = [];
+  const dated: Omit<Departure, 'protection'>[] = [];
 
   // ----------------------------------------------------------- Helm moved on
   const recommitted = later
@@ -238,7 +244,12 @@ export function decisionFidelity(hc: HelmCommittedDecision, views: readonly Comm
     }
   }
 
-  const departures = [...structural, ...dated.sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''))];
+  // Each departure carries its commitment's ceiling: what it quotes travels at least as protected as what it is about.
+  const ceilingOf = (id: string | null): Protection => {
+    const v = id === null ? undefined : tree.find((x) => x.record.id === id);
+    return v ? textCeiling(v.record, v.events) : [];
+  };
+  const departures = [...structural, ...dated.sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''))].map((d) => ({ ...d, protection: ceilingOf(d.commitmentId) }));
   // Held as decided: the outcome and every commitment drafted from an intent that no departure names.
   const departed = new Set(departures.map((d) => d.commitmentId));
   const held = tree

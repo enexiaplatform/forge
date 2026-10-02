@@ -75,13 +75,13 @@ submitted to Helm's governed intake as contextual facts, adopted into Helm's out
 Helm's genome as a typed, pinned execution episode (ADR-0018) — the whole chain, decision to Helm's learning, in one
 Postgres under Helm's guards (loop 1). Sensitivity never lowers: Helm's classes are carried
 and enforced in Forge (ADR-0017). Each decision shows where execution departed from what Helm committed, as a
-record — never a score (ADR-0019). 142 unit tests, 37 integration tests,
+record — never a score (ADR-0019), and those departures travel to Helm with the outcome (Helm ADR-0038). Words people write keep the ceiling of their commitment (ADR-0020). Acts that bind accountability rest on Helm's standing attestation, checked by Forge's database (ADR-0021). Reads stay whole and fast at organization scale (ADR-0022). Outcomes reach Helm through Helm's own intake host, and Memoire's webhooks through Forge's (ADR-0023). 179 unit tests, 46 integration tests,
 and three contracts, each new rule broken on purpose once and seen to catch it. The
 console is exercised in a browser.
 
 Not proven or not built: no migration is applied to the shared Supabase project and no
-staging branch exists; authority is the runtime's interim policy until Helm's runtime
-answers the port (production stays gated on it, ADR-0013); the Claude extractor has not
-been run live; execution surfaces other than Helm and Memoire are fixtures; no transport
-carries a submission between the products yet (the suite composes both sides). Details:
+staging branch exists; Helm's standing and intake are proven with Helm's code in one
+database, not through deployed edge functions, and no organization is TRUSTED anywhere
+(production stays gated, ADR-0013); the Claude extractor has not been run live; execution
+surfaces other than Helm and Memoire are fixtures. Details:
 [architecture §14–15](docs/architecture/forge-architecture.md#14-what-is-not-proven).

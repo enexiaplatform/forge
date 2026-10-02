@@ -18,8 +18,9 @@
  * The mapping never grades: it carries what happened and what it rests on.
  */
 
-import type { CommitmentView, OutcomePublication, PublishedMeasure } from '@forge/kernel';
+import { type CommitmentView, joinProtection, type OutcomePublication, type PublishedMeasure } from '@forge/kernel';
 import { helmCommitmentIdOf } from './helm.ts';
+import type { Departure, DepartureKind } from './fidelity.ts';
 
 export const HELM_EXECUTION_OUTCOME_CONTRACT = 'helm.execution-outcome.v1';
 export const HELM_CONTEXTUAL_FACT_CONTRACT = 'helm.contextual-fact.v1';
@@ -57,6 +58,19 @@ export type HelmExecutionOutcomeSubmission = {
   readonly narrative: { readonly outcome: string; readonly explanations: readonly string[]; readonly lessons: readonly string[]; readonly sensitivity: readonly string[] };
   readonly sensitivity: readonly string[];
   readonly authority: { readonly policy: string; readonly trusted: boolean } | null;
+  /** Where execution departed from what Helm committed, each with its own classes (Helm ADR-0038; Forge ADR-0019). */
+  readonly departures: readonly HelmExecutionDeparture[];
+};
+
+/** HELM's ExecutionDeparture, mirrored: a fact about the path, never a score. */
+export type HelmExecutionDeparture = {
+  readonly kind: DepartureKind;
+  readonly statement: string;
+  readonly at: string | null;
+  readonly by: string | null;
+  readonly reason: string | null;
+  readonly authority: { readonly statement: string; readonly trusted: boolean; readonly approvedBy: string | null } | null;
+  readonly sensitivity: readonly string[];
 };
 
 /** HELM's typed genome reference to an execution episode (Helm ADR-0035). */
@@ -107,12 +121,19 @@ function factOf(p: OutcomePublication, m: PublishedMeasure, orgId: string, autho
  */
 export function toHelmExecutionOutcome(
   p: OutcomePublication,
-  opts: { readonly orgId: string; readonly publishedByLabel: string; readonly authority: { readonly policy: string; readonly trusted: boolean } | null },
+  opts: {
+    readonly orgId: string;
+    readonly publishedByLabel: string;
+    readonly authority: { readonly policy: string; readonly trusted: boolean } | null;
+    /** The decision's departures (`decisionFidelity`), sent with the outcome so Helm can learn where fidelity was lost. */
+    readonly departures?: readonly Departure[];
+  },
 ): HelmExecutionOutcomeSubmission | null {
   const commitmentId = helmCommitmentOf(p);
   if (commitmentId === null || p.origin.fingerprint === null) return null;
   if (p.resolution !== 'FULFILLED' && p.resolution !== 'PARTIALLY_FULFILLED' && p.resolution !== 'MISSED') return null;
   const measured = p.measures.filter((m) => m.comparator === 'QUALITATIVE' ? m.note !== null : m.actual !== null);
+  const departures = opts.departures ?? [];
   return {
     contract: HELM_EXECUTION_OUTCOME_CONTRACT,
     sourceSystem: 'forge',
@@ -129,8 +150,18 @@ export function toHelmExecutionOutcome(
       lessons: p.lessons.map((l) => `${l.statement} — ${l.author}`),
       sensitivity: [...p.protection],
     },
-    sensitivity: [...p.protection],
+    // The submission is at least as protected as everything in it, departures included (ADR-0017).
+    sensitivity: [...joinProtection(p.protection, ...departures.map((d) => d.protection))],
     authority: opts.authority,
+    departures: departures.map((d) => ({
+      kind: d.kind,
+      statement: d.statement,
+      at: d.at,
+      by: d.by,
+      reason: d.reason,
+      authority: d.authority ? { statement: d.authority.statement, trusted: d.authority.trusted, approvedBy: d.authority.approvedBy } : null,
+      sensitivity: [...d.protection],
+    })),
   };
 }
 

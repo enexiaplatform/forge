@@ -210,7 +210,9 @@ For a decision's commitment, the principal **publishes** the verified outcome
 and period, or only a person's word), fingerprinted, as `outcome.published`. A Helm
 person records it through Helm's own `recordOutcomeReview`; Helm computes the variance
 and its genome binds the review to an episode. Helm's genome references the Forge
-episode by a typed, pinned `EXECUTION_EPISODE` reference once a Helm manager has adopted the outcome.
+episode by a typed, pinned `EXECUTION_EPISODE` reference once a Helm manager has adopted the outcome. Delivery
+(ADR-0023): `deliverOutcomes` derives what Helm has not received — from Helm's receipts, by reference — and sends it
+once, as the person, to Helm's own intake host; nothing about delivery is stored in Forge.
 
 **Sensitivity** (ADR-0017): every fact keeps the class its source gave it, and everything derived from it carries the
 union; protected values are sealed and read only under Helm's own clearance; an uncleared reader sees that a value
@@ -267,7 +269,8 @@ Each new rule was broken on purpose and seen to catch it.
   in one database (loop 4) — not through Helm's edge function and Supabase Auth, and no organization is TRUSTED anywhere.
 - **Free text beyond events.** Reasons and learnings take their commitment's ceiling and are sealed (ADR-0020); a
   candidate's dismissal reason is still open, because the notes it answers carry no class yet.
-- **A transport between the products.** Submissions to Helm are composed in the integration suite; no server sends them yet.
+- **Deployed transport.** Forge delivers through Helm's intake host code and hosts its Memoire receiver (ADR-0023), proven
+  in the integration suite; neither edge function is deployed, and the Memoire receiver has no deployed wrapper.
 - **Live services.** Supabase Auth, PostgREST, Memoire's deployed API and webhook
   delivery over the network, and the Claude API itself (opt-in test only).
 - **Execution surfaces.** Jira, ERP, WMS, SCM remain fixtures; no connector service runs.

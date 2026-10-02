@@ -34,6 +34,10 @@ import {
   helmValueRef,
   ingestObservations,
   proposeIntake,
+  decisionFidelity,
+  deliverOutcomes,
+  helmReceivedFingerprints,
+  pendingDeliveries,
   publicationAuthority,
   toHelmExecutionEpisodeRef,
   toHelmExecutionOutcome,
@@ -409,14 +413,42 @@ describe('Loop 1 — a Helm decision becomes Forge commitments, through the shar
         assert.match(c.error?.message ?? '', /labelled less restrictively/);
       });
 
-      test('Helm receives it through its intake on Postgres; the receipt is read whole or not at all', async () => {
+      test('Forge delivers it through Helm’s intake host, in the principal’s own session; the receipt is read whole or not at all', async () => {
+        // The transport as deployed: Forge derives what Helm has not received, and sends it to Helm's own host
+        // (its edge function's code), which runs as the sender under Helm's rules. Forge writes nothing of Helm's.
+        const { handleExecutionIntakeRequest } = await fromSibling(HELM, 'server/integration/executionIntakeHost.ts');
+        const send = (body) => handleExecutionIntakeRequest({ caller: gmRest }, { userId: GM }, body);
+        const gm = scopeOf(GM);
+        const gmTables = createSqlTableClient(runnerAs(db, 'authenticated', GM));
+        const views = unwrap(await forgeAs(GM).list(gm));
+        assert.equal(pendingDeliveries(views, unwrap(await helmReceivedFingerprints(gmTables, gm)), ORG).length, 1, 'published, not yet received');
+        // Where execution departed from the decision travels with the outcome (Helm ADR-0038), each at its classes.
+        const [hc] = unwrap(await assembleCommittedDecisions(helmSourceAs(GM), helmScopeOf(gm)));
+        const fidelity = decisionFidelity(hc, views);
+        assert.ok(fidelity.departures.length > 0, 'the Rohto execution departed from the decision');
+        const departuresOf = () => fidelity.departures;
+        const delivered = unwrap(await deliverOutcomes({ scope: gm, views, received: unwrap(await helmReceivedFingerprints(gmTables, gm)), send, departuresOf }));
+        assert.equal(delivered.length, 1);
+        assert.equal(delivered[0].outcome, 'RECEIVED', JSON.stringify(delivered[0]));
+        const stored = (await runnerAs(db, 'authenticated', GM)('SELECT departures, sensitivity_classes FROM public.helm_execution_outcomes', [])).rows[0];
+        assert.equal(stored.departures.length, fidelity.departures.length, 'Helm keeps every departure, as received');
+        const short = stored.departures.find((d) => d.kind === 'ENDED_SHORT');
+        assert.match(short.reason, /nine days after/, 'the ending arrives with the reason given');
+        assert.deepEqual(short.sensitivity, ['FINANCIAL_SENSITIVE'], 'written on a commitment measured by margin, it carries the margin’s class');
+        for (const d of stored.departures) assert.ok(d.sensitivity.every((c) => stored.sensitivity_classes.includes(c)), 'no departure is less protected than the receipt');
+        assert.equal(pendingDeliveries(views, unwrap(await helmReceivedFingerprints(gmTables, gm)), ORG).length, 0, 'nothing left to send once Helm holds the receipt');
+        const dropped = unwrap(await deliverOutcomes({ scope: gm, views, received: new Set(), send }));
+        assert.equal(dropped[0].duplicate, true, 'a sender that lost the answer sends again and Helm answers with the receipt it holds');
+        const refusedBody = await send({ orgId: ORG, submission, sender: GM });
+        assert.equal(refusedBody.status, 400, 'a body that names its own sender is refused by name');
+
         const received = unwrap(await intake.submit(helmScope, submission, 'Country GM Vietnam'));
+        assert.equal(received.duplicate, true);
         receipt = received.receipt;
         assert.deepEqual(receipt.sensitivityClasses, ['FINANCIAL_SENSITIVE']);
         const count = async (uid, table) => (await runnerAs(db, 'authenticated', uid)(`SELECT count(*)::int AS n FROM public.${table}`, [])).rows[0].n;
         assert.equal(await count(GM, 'helm_execution_outcomes'), 1);
         assert.equal(await count(CD, 'helm_execution_outcomes'), 0, 'the Commercial Director sees the decision but is not cleared for its margin');
-        assert.equal(unwrap(await intake.submit(helmScope, submission, 'Country GM Vietnam')).duplicate, true);
       });
 
       test('a manager adopts it: Helm’s runtime writes the review to Helm’s table — readable only by those Helm cleared', async () => {

@@ -1,8 +1,38 @@
 # Forge — the next development plan
 
-**Written** 2 Oct 2026 · **Baseline** `npm run check` green: 142 unit, 37 integration, three contracts ·
+**Written** 2 Oct 2026 · **Baseline when written** 142 unit, 37 integration, three contracts ·
 **Reads with** [source of truth](source-of-truth.md) · [architecture §14–15](../architecture/forge-architecture.md#14-what-is-not-proven) ·
 [ADR-0013](../adr/0013-trusted-authority-gate-and-deployment-progression.md)
+
+## Status — 2 Oct 2026, end of day
+
+| Item | State | Where |
+| --- | --- | --- |
+| 0.1 Commit | **Done.** Forge on `main`, pushed to github.com/enexiaplatform/forge. Helm's work on local branch `forge/execution-outcomes` (4 commits), not pushed | — |
+| 0.2 Staging route | **Waiting on the owner** — a paid plan or pausing a project is the owner's decision | [staging runbook](../operations/staging.md) |
+| 0.3 API key | **Waiting on the owner** — no Forge-owned `ANTHROPIC_API_KEY` exists | — |
+| 1.1–1.4 | **Blocked** on 0.2 and 0.3; every script is ready and proven locally (the staging suite now has eleven contracts) | — |
+| 2.1 Trusted authority | **Done.** Helm attests standing (Helm ADR-0036); Forge binds every consequential act to it in the database (ADR-0021); integration loop 4 | ADR-0021 |
+| 2.2 Transport | **Done, not deployed.** Helm's intake host and edge function (Helm ADR-0037); Forge's derived outbox (`deliverOutcomes`); Forge's Memoire webhook host (ADR-0023) | ADR-0023 |
+| 2.3 Free text | **Done.** Words take their commitment's ceiling, sealed and enforced in both stores (ADR-0020) | ADR-0020 |
+| 2.4 Scale | **Done.** Found and fixed silent truncation at PostgREST's row cap; warm ledger and remembered derivations (ADR-0022). Numbers below | ADR-0022 |
+| 3.1 Departures to Helm | **Done.** Typed, each at its classes (Helm ADR-0038); loop 1 sends the Rohto departures | Helm ADR-0038 |
+| 3.2 A real execution surface | **Not started** — needs the owner to name a system and a sandbox; a fixture reader does not count | — |
+| 3.3 Assumptions against what happened | **Not started** — needs the owner's boundary decision; nothing yet maps an observation to a Helm assumption without inference | — |
+| 4 Production | **Closed** until stage 1 runs on staging and an organization is recorded TRUSTED there | Stage 4 checklist |
+
+`npm run check`: 179 unit (one opt-in live test skipped), 46 integration, three contracts — green.
+
+**Reads at scale** (`npm run bench:reads`, SYNTHETIC, 10 000 commitments, 186 668 events; PGlite under RLS):
+
+| Reading | Read whole | Through the ledger cache |
+| --- | --- | --- |
+| The ledger (every commitment) | 8.5 s | first 19.1 s, then **50 ms** |
+| Conditions across the organization | 8.4 s | 59 ms |
+| One trace | 8.5 s | 42 ms |
+| The ledger after one write | 8.6 s | 42 ms |
+
+In memory the same ledger reads in 60–100 ms (it was about 1 s before the store stopped copying on every read).
 
 ## Where Forge stands
 
@@ -105,9 +135,9 @@ Each item deepens §15's traceability without a new kind of screen. Each needs o
 Applying `forge_*` to the shared project happens once, on the owner's say-so, when every line holds:
 
 - [ ] stage 1 green on staging, including the loops through Auth and PostgREST
-- [ ] 2.1 — Helm's trusted service answers Forge's authority port; `requireTrustedAuthority` on
-- [ ] 2.2 — the relay delivers to Helm's intake on staging, once per key
-- [ ] 2.3 — free text sealed at its ceiling
+- [ ] 2.1 — Helm's trusted service answers Forge's authority port through its deployed edge function, and the organization is recorded TRUSTED (proven locally in one database)
+- [ ] 2.2 — the relay delivers to Helm's intake on staging, once per key (proven locally)
+- [x] 2.3 — free text sealed at its ceiling
 - [ ] advisors clean; Helm's own Postgres suites green on staging
 - [ ] a rollback note: Forge's migrations are additive, so rolling back is revoking Forge's grants, not dropping tables
 

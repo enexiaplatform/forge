@@ -18,7 +18,6 @@ import { createForgeRuntime, createInMemoryCandidateStore, createInMemoryStore, 
 import {
   connectorScope,
   createInMemoryInbox,
-  ingestObservations,
   interpretNotification,
   listAllPromises,
   memoireCommitmentRef,
@@ -29,6 +28,7 @@ import { postgrestClient } from './support/postgrest.mjs';
 import { runnerAs } from './support/database.mjs';
 import { memoireCommercialApi, memoireDatabase, memoireUser, runMemoireWebhookWorker } from './support/memoire.mjs';
 import { fromSibling, MEMOIRE, memoireSkip } from './support/siblings.mjs';
+import { handleMemoireWebhook } from '../server/memoire/webhookHost.ts';
 
 const ORG = '10000000-0000-4000-8000-0000000000aa';
 const OWNER = '50000000-0000-4000-8000-0000000000c1'; // the Commercial Director's Memoire account
@@ -73,16 +73,17 @@ describe('Loop 2 — Memoire’s commercial reality becomes Forge observation, t
     assert.equal(update.error, null, update.error?.message);
   };
 
-  /** Forge's receiving endpoint, as Memoire's worker reaches it. */
+  /** Forge's receiving endpoint, as Memoire's worker reaches it: the host Forge deploys (server/memoire/webhookHost.ts). */
   const forgeEndpoint = async (_url, rawBody, headers) => {
     deliveries.push({ rawBody, headers });
-    const received = await receiveMemoireNotification({ headers, rawBody, secret: SECRET, nowSeconds: Math.floor(Date.now() / 1000), inbox });
-    if (!received.ok) return 401;
-    if (received.value.duplicate) return 200;
-    const read = await interpretNotification(api, received.value.notification);
-    interpreted.push({ notification: received.value.notification, ...read });
-    const ingested = await ingestObservations(forge, ORG, read.observations);
-    return ingested.ok ? 200 : 503;
+    const res = await handleMemoireWebhook(
+      { secret: SECRET, inbox, api, runtime: forge, orgId: ORG, nowSeconds: () => Math.floor(Date.now() / 1000) },
+      { headers, rawBody },
+    );
+    if (res.status === 200 && res.body.duplicate === false) {
+      interpreted.push({ notification: JSON.parse(rawBody), observations: Array.from({ length: res.body.observations }), uninterpreted: res.body.uninterpreted });
+    }
+    return res.status;
   };
 
   before(async () => {
