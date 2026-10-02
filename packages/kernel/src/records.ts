@@ -133,3 +133,62 @@ function recordOf(party: Party, mine: readonly CommitmentView[]): ExecutionRecor
     },
   };
 }
+
+// ------------------------------------------------------------- assumptions
+
+/**
+ * Assumptions, as they turned out (§15 "Which assumptions repeatedly prove wrong?"; ADR-0026). Each assumption a
+ * decision rested on, across every decision whose execution Forge holds, with what people said became of it — the
+ * cases, their reasons and their counts, never a rate. Read from the root of each tree, so a decision counts once.
+ * Ordered by the assumption's words; a handful of cases says it is a handful.
+ */
+export type AssumptionRecord = {
+  readonly statement: string;
+  readonly held: number;
+  readonly broke: number;
+  readonly unexamined: number;
+  readonly cases: readonly {
+    readonly commitmentId: string;
+    readonly decision: string;
+    readonly assessment: 'HELD' | 'BROKE' | null;
+    readonly by: string | null;
+    readonly reason: string | null;
+    readonly at: string | null;
+  }[];
+  readonly caveat: string | null;
+};
+
+const sameWords = (s: string): string => s.toLowerCase().replace(/\s+/g, ' ').replace(/[.\s]+$/, '').trim();
+
+export function assumptionRecords(views: readonly CommitmentView[]): AssumptionRecord[] {
+  const by = new Map<string, { statement: string; cases: AssumptionRecord['cases'][number][] }>();
+  for (const v of views) {
+    if (v.record.parentId !== null) continue;
+    for (const a of v.assumptions) {
+      const k = sameWords(a.statement);
+      const entry = by.get(k) ?? { statement: a.statement, cases: [] };
+      entry.cases.push({
+        commitmentId: v.record.id,
+        decision: v.record.origin.label,
+        assessment: a.assessed?.assessment ?? null,
+        by: a.assessed?.actor.label ?? null,
+        reason: a.assessed?.reason ?? null,
+        at: a.assessed?.at ?? null,
+      });
+      by.set(k, entry);
+    }
+  }
+  return [...by.values()]
+    .sort((a, b) => a.statement.localeCompare(b.statement))
+    .map(({ statement, cases }) => {
+      const examined = cases.filter((c) => c.assessment !== null).length;
+      return {
+        statement,
+        held: cases.filter((c) => c.assessment === 'HELD').length,
+        broke: cases.filter((c) => c.assessment === 'BROKE').length,
+        unexamined: cases.length - examined,
+        cases,
+        caveat: examined < SMALL_SAMPLE ? `${examined === 0 ? 'Never examined' : examined === 1 ? 'Examined once' : `Examined ${examined} times`} — too few to read a pattern into.` : null,
+      };
+    });
+}

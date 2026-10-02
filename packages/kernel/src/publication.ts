@@ -76,6 +76,8 @@ export type OutcomePublication = {
   };
   readonly explanations: readonly { readonly statement: string; readonly author: string }[];
   readonly lessons: readonly { readonly statement: string; readonly appliesTo: string | null; readonly author: string }[];
+  /** What the decision rested on, and what a person said became of it (ADR-0026); null where nobody has. */
+  readonly assumptions: readonly { readonly statement: string; readonly assessment: 'HELD' | 'BROKE' | null; readonly by: string | null; readonly reason: string | null }[];
   readonly episode: { readonly ref: string; readonly fingerprint: string };
   /** The union of every class the published facts carry; whoever receives it must protect it at least as well. */
   readonly protection: Protection;
@@ -180,6 +182,12 @@ export function verifyOutcome(v: CommitmentView): Result<OutcomePublication, { c
     lessons: v.learnings
       .filter((l) => l.learning.kind === 'LESSON')
       .map((l) => ({ statement: l.learning.statement, appliesTo: l.learning.appliesTo, author: l.actor.label })),
+    assumptions: v.assumptions.map((a) => ({
+      statement: a.statement,
+      assessment: a.assessed?.assessment ?? null,
+      by: a.assessed?.actor.label ?? null,
+      reason: a.assessed?.reason ?? null,
+    })),
     episode: { ref: episode.ref, fingerprint: episode.fingerprint },
     protection: joinProtection(episode.protection, ...measures.map((m) => m.protection)),
     verifiedBy: VERIFICATION_POLICY,

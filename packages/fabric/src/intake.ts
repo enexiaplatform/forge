@@ -123,8 +123,9 @@ export async function draftFromHelm(scope: Scope, hc: HelmCommittedDecision, dep
     })),
     ...hc.assumptions.map((a, i) => ({
       key: `assumption.${i + 1}`,
-      label: `Assumption (${a.criticality.toLowerCase()})`,
-      value: `${a.statement}${a.ownerLabel ? ` — ${a.ownerLabel}` : ' — nobody stands behind this'}`,
+      label: `Assumption (${a.criticality.toLowerCase()}) — ${a.ownerLabel ? `owned by ${a.ownerLabel}` : 'nobody stands behind this'}`,
+      value: a.statement,
+      standsBehind: a.ownerLabel,
       capture: 'INHERITED' as const,
       epistemic: 'ASSUMPTION' as const,
       source: helmSource,

@@ -51,6 +51,7 @@ export const conditionCodes = [
   'OUTCOME_UNRECORDED',
   'LEARNING_OPEN',
   'OUTCOME_UNPUBLISHED',
+  'ASSUMPTIONS_UNEXAMINED',
 ] as const;
 export type ConditionCode = (typeof conditionCodes)[number];
 
@@ -66,7 +67,8 @@ export type AskAct =
   | 'RECORD_OUTCOME'
   | 'RECORD_LEARNING'
   | 'SETTLE_DEPENDENCY'
-  | 'PUBLISH_OUTCOME';
+  | 'PUBLISH_OUTCOME'
+  | 'ASSESS_ASSUMPTION';
 
 export type Ask = {
   readonly whom: Party;
@@ -243,6 +245,23 @@ export function conditionsOf(v: CommitmentView, lookup: ViewLookup = () => null)
       fact('It ended differently from what was promised, and nobody has said why.', v.resolution ? [v.resolution.eventId] : [id]),
       { whom: principal, question: 'What explains the difference, and what should the enterprise remember?', acts: ['RECORD_LEARNING'], subject: null },
     );
+  }
+
+  // §15 asks which assumptions repeatedly prove wrong. When the root of a decision's tree ends, its principal is asked
+  // once — noted, never urgent — what became of the assumptions nobody has examined (ADR-0026).
+  if (v.phase === 'CLOSED' && v.record.parentId === null) {
+    const unexamined = v.assumptions.filter((a) => a.assessed === null);
+    if (unexamined.length > 0) {
+      add(
+        'ASSUMPTIONS_UNEXAMINED',
+        'NOTED',
+        fact(
+          `${unexamined.length === 1 ? 'One assumption' : `${unexamined.length} assumptions`} the decision rested on ${unexamined.length === 1 ? 'was' : 'were'} never examined.`,
+          v.resolution ? [v.resolution.eventId] : [id],
+        ),
+        { whom: principal, question: 'Now that it has ended: which assumptions held, and which broke?', acts: ['ASSESS_ASSUMPTION'], subject: unexamined[0].key },
+      );
+    }
   }
 
   // A verified outcome of a commitment that answers to a Helm decision belongs in Helm's memory.

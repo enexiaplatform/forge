@@ -80,8 +80,10 @@ export const withheldText = (p: Protection): string =>
 
 type MeasureResult = { readonly key: string; readonly actual: string | null; readonly note: string | null; readonly protection?: Protection; readonly withheld?: boolean };
 type Said = { readonly statement: string; readonly appliesTo?: string | null; readonly author: string };
+type Assessed = { readonly statement: string; readonly assessment: string | null; readonly by: string | null; readonly reason: string | null };
 type PublishedLike = {
   readonly outcome: string;
+  readonly assumptions?: readonly Assessed[];
   readonly explanations?: readonly Said[];
   readonly lessons?: readonly Said[];
   readonly measures: readonly (MeasureResult & { readonly difference?: string | null; readonly met?: boolean | null })[];
@@ -239,7 +241,17 @@ function sealPayload<E extends Sealable>(e: E, pp: Protection): { open: E; seale
       const measures = pub.measures.map((m) => (isProtected(m.protection) ? { ...m, actual: null, note: null, difference: null, met: null, withheld: true } : m));
       // What people said explains the outcome was written about it: it is sealed with it.
       const hide = (xs: readonly Said[] | undefined) => (xs ?? []).map((x) => ({ ...x, statement: withheldText(pp), ...('appliesTo' in x ? { appliesTo: null } : {}) }));
-      const open = { ...pub, outcome: withheldStatement(pp, 'this outcome'), measures, realizedValue: [], explanations: hide(pub.explanations), lessons: hide(pub.lessons), withheld: pp };
+      const hideReasons = (xs: readonly Assessed[] | undefined) => (xs ?? []).map((x) => (x.reason ? { ...x, reason: withheldText(pp) } : x));
+      const open = {
+        ...pub,
+        outcome: withheldStatement(pp, 'this outcome'),
+        measures,
+        realizedValue: [],
+        explanations: hide(pub.explanations),
+        lessons: hide(pub.lessons),
+        ...(pub.assumptions ? { assumptions: hideReasons(pub.assumptions) } : {}),
+        withheld: pp,
+      };
       return {
         open: withPayload({ ...(e.payload as object), publication: open }),
         sealed: {
@@ -247,6 +259,7 @@ function sealPayload<E extends Sealable>(e: E, pp: Protection): { open: E; seale
           realizedValue: pub.realizedValue,
           explanations: pub.explanations ?? [],
           lessons: pub.lessons ?? [],
+          ...(pub.assumptions ? { assumptions: pub.assumptions } : {}),
           measures: pub.measures.filter((m) => isProtected(m.protection)).map((m) => ({ key: m.key, actual: m.actual, note: m.note, difference: m.difference ?? null, met: m.met ?? null })),
         },
       };
@@ -306,6 +319,7 @@ function unsealPayload<E extends Sealable>(open: E, sealed: Sealed): E {
         measures: restore(pub.measures, sealed.measures as SealedMeasure[]),
         ...(sealed.explanations ? { explanations: sealed.explanations as readonly Said[] } : {}),
         ...(sealed.lessons ? { lessons: sealed.lessons as readonly Said[] } : {}),
+        ...(sealed.assumptions ? { assumptions: sealed.assumptions as readonly Assessed[] } : {}),
       };
       return withPayload({ ...(open.payload as object), publication });
     }

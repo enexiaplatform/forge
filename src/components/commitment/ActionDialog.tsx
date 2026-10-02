@@ -7,6 +7,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import {
   type AskAct,
+  type AssumptionAssessment,
   type CommitmentView,
   deliveryResolutions,
   describeProtection,
@@ -54,7 +55,7 @@ export function ActionDialog({ view, act, subject = null, onClose }: Props) {
     else onClose();
   }
 
-  const title = { ...ACT_LABELS, CLOSE: 'Close the commitment', REQUEST_CHANGE: 'Change the promise' }[act];
+  const title = { ...ACT_LABELS, CLOSE: 'Close the commitment', REQUEST_CHANGE: 'Change the promise', ASSESS_ASSUMPTION: 'What became of an assumption' }[act];
   const kicker = view.terms.statement.length > 70 ? `${view.terms.statement.slice(0, 70)}…` : view.terms.statement;
 
   if (done) {
@@ -130,6 +131,15 @@ export function ActionDialog({ view, act, subject = null, onClose }: Props) {
         return <OutcomeForm view={view} footer={footer} demoLedger={demo.ledger} onSubmit={(outcome) => submit((s, d) => d.runtime.recordOutcome(s, id, outcome), () => null)} />;
       case 'RECORD_LEARNING':
         return <LearningForm footer={footer} onSubmit={(input) => submit((s, d) => d.runtime.recordLearning(s, id, input), () => null)} />;
+      case 'ASSESS_ASSUMPTION':
+        return (
+          <AssessForm
+            view={view}
+            subject={subject}
+            footer={footer}
+            onSubmit={(key, assessment, reason) => submit((s, d) => d.runtime.assessAssumption(s, id, { key, assessment }, reason), () => null)}
+          />
+        );
       case 'PUBLISH_OUTCOME':
         return (
           <PublishForm
@@ -463,6 +473,53 @@ function DisputeForm({ view, subject, footer, onSubmit }: { view: CommitmentView
         <TextArea value={reason} onChange={(e) => setReason(e.target.value)} />
       </Field>
       <FormFooter>{footer('Dispute', () => onSubmit(evidenceId, reason), reason.trim() === '' || !evidenceId)}</FormFooter>
+    </>
+  );
+}
+
+function AssessForm({
+  view,
+  subject,
+  footer,
+  onSubmit,
+}: {
+  view: CommitmentView;
+  subject: string | null;
+  footer: Footer;
+  onSubmit: (key: string, assessment: AssumptionAssessment, reason: string) => void;
+}) {
+  const first = view.assumptions.find((a) => a.key === subject) ?? view.assumptions.find((a) => a.assessed === null) ?? view.assumptions[0];
+  const [key, setKey] = useState(first?.key ?? '');
+  const [assessment, setAssessment] = useState<AssumptionAssessment>('HELD');
+  const [reason, setReason] = useState('');
+  const chosen = view.assumptions.find((a) => a.key === key);
+  const open = view.phase === 'PROPOSED' || view.phase === 'ACTIVE';
+  return (
+    <>
+      <Field label="The assumption" hint="What the decision rested on without proof — inherited from Helm.">
+        <Select value={key} onChange={(e) => setKey(e.target.value)}>
+          {view.assumptions.map((a) => (
+            <option key={a.key} value={a.key}>
+              {a.statement.slice(0, 90)}
+              {a.assessed ? ` — said to have ${a.assessed.assessment === 'HELD' ? 'held' : 'broken'}` : ''}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      {chosen && <p className="-mt-2 mb-4 font-serif text-read italic text-ink-800">{chosen.statement}</p>}
+      <Field label="What became of it">
+        <Select value={assessment} onChange={(e) => setAssessment(e.target.value as AssumptionAssessment)}>
+          <option value="HELD">It held</option>
+          <option value="BROKE">It broke</option>
+        </Select>
+      </Field>
+      {assessment === 'BROKE' && open && (
+        <p className="mb-4 text-meta text-ink-600">The world this commitment rests on has changed: {view.terms.principal.label} will be asked whether it still stands.</p>
+      )}
+      <Field label="What shows it">
+        <TextArea value={reason} onChange={(e) => setReason(e.target.value)} />
+      </Field>
+      <FormFooter>{footer('Record', () => onSubmit(key, assessment, reason), reason.trim() === '' || !key)}</FormFooter>
     </>
   );
 }

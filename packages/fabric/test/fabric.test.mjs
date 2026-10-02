@@ -41,7 +41,7 @@ describe('intake — capture once, use everywhere', () => {
     assert.ok(draft.friction.inherited > draft.friction.inferred);
     const opportunity = draft.context.find((c) => c.key === 'context.opportunity');
     assert.equal(opportunity.entityRef, 'memoire:opportunity:rohto-q4-tender', 'Memoire context is referenced, not copied as an entity');
-    assert.ok(draft.context.some((c) => c.epistemic === 'ASSUMPTION' && /nobody stands behind this/.test(c.value)));
+    assert.ok(draft.context.some((c) => c.epistemic === 'ASSUMPTION' && /nobody stands behind this/.test(c.label)));
   });
 
   test('modelled outcomes become measures with Helm’s expected values; qualitative ones stay qualitative', async () => {

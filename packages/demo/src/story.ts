@@ -537,6 +537,26 @@ export function createMeridianDemo(): MeridianDemo {
           appliesTo: 'reallocations of consignment stock',
         });
       });
+      await act(m, '2026-11-20T09:10:00.000Z', 'com', 'Say what became of the assumptions the decision rested on', async () => {
+        const v = await view(refs.outcome);
+        if (!v || !refs.outcome) return 'SKIPPED';
+        if (v.assumptions.every((a) => a.assessed !== null)) return 'ALREADY_DONE';
+        const said: Record<string, string> = {
+          'Distributor D will release its eight consignment units for the quarter.':
+            'Distributor D released all eight units, on 6 October — four days after the date the plan assumed, but within the quarter.',
+          'The provincial tender remains material this quarter.': 'The provincial tender is still on the shortlist; Helm’s buffer decision rests on it.',
+          'Rohto treats on-time delivery of this order as a condition of the annual framework agreement.':
+            'Rohto took the two late units without raising the framework; its renewal is still on the January agenda.',
+        };
+        // Whoever stands behind an assumption says what became of it; the principal answers for the ones nobody owns.
+        let last: Result<unknown> = { ok: true, value: null };
+        for (const a of v.assumptions.filter((x) => x.assessed === null)) {
+          const who = a.standsBehind === 'Commercial Director Vietnam' ? 'com' : 'gm';
+          last = await runtime.assessAssumption(P(who), refs.outcome, { key: a.key, assessment: 'HELD' }, said[a.statement] ?? 'It held through delivery.');
+          if (!last.ok) return last;
+        }
+        return last;
+      });
       await act(m, '2026-11-20T09:15:00.000Z', 'gm', 'Publish the verified outcome for Helm’s enterprise memory', async () => {
         const v = await view(refs.outcome);
         if (!v || !refs.outcome) return 'SKIPPED';

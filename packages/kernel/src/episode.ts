@@ -73,7 +73,20 @@ export function assembleEpisode(v: CommitmentView): ExecutionEpisode {
   const assumptions = Array.isArray(snapshot.assumptions)
     ? (snapshot.assumptions as { statement?: string; owner?: string | null }[])
         .filter((a) => typeof a.statement === 'string')
-        .map((a) => say('ASSUMPTION', `${a.statement}${a.owner ? ` — owned by ${a.owner}` : ' — nobody stands behind this'}`, [origin.ref ?? id]))
+        .flatMap((a) => {
+          const assumed = say('ASSUMPTION', `${a.statement}${a.owner ? ` — owned by ${a.owner}` : ' — nobody stands behind this'}`, [origin.ref ?? id]);
+          // What a person said became of it (ADR-0026) — their judgment, attributed; unexamined says so.
+          const state = v.assumptions.find((x) => x.statement === a.statement);
+          const said = state?.assessed
+            ? fact(
+                `${state.assessed.assessment === 'HELD' ? 'It held' : 'It broke'}, said ${state.assessed.actor.label} on ${humanDate(state.assessed.at)}${state.assessed.reason ? `: “${state.assessed.reason}”` : '.'}`,
+                [state.assessed.eventId],
+              )
+            : state
+              ? fact('Nobody has said whether it held.', [id])
+              : null;
+          return said ? [assumed, said] : [assumed];
+        })
     : [];
 
   const commitment: Statement[] = [

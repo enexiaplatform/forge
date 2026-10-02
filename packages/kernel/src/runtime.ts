@@ -40,6 +40,8 @@ import { assembleEpisode, type ExecutionEpisode } from './episode.ts';
 import type { CommitmentStore } from './port.ts';
 import { varianceOf, type Variance } from './variance.ts';
 import {
+  type AssumptionAssessment,
+  assumptionAssessments,
   type AuthorityBasis,
   type CaptureMode,
   type Change,
@@ -721,6 +723,52 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     ]);
   }
 
+  // ------------------------------------------------------------ assumptions
+
+  /**
+   * Say what became of an assumption the commitment rests on (ADR-0026). A person's judgment, with their reason. If it
+   * broke while the commitment is still open, the world it rests on has changed: Forge records that as a material
+   * context change, so the principal is asked whether the promise still stands — the same ask any changed context gets.
+   */
+  async function assessAssumption(
+    scope: Scope,
+    id: string,
+    input: { readonly key: string; readonly assessment: AssumptionAssessment; readonly evidenceIds?: readonly string[] },
+    reason: string,
+    opts: ActOptions = {},
+  ): Promise<Result<CommitmentView>> {
+    if (blank(reason)) return fail('reason.required', 'Say what shows it — whoever reads this later needs to know why it held or broke.');
+    if (!assumptionAssessments.includes(input.assessment)) return fail('assumption.assessment_unknown', 'An assumption held, or it broke.');
+    const loaded = await load(scope, id);
+    if (!loaded.ok) return loaded;
+    const v = loaded.value;
+    const a = v.assumptions.find((x) => x.key === input.key);
+    if (!a) return fail('assumption.not_found', 'This commitment does not rest on that assumption.', { key: input.key });
+    const evidenceIds = input.evidenceIds ?? [];
+    const unknown = evidenceIds.filter((e) => !v.evidence.some((x) => x.item.id === e));
+    if (unknown.length > 0) return fail('assumption.evidence_not_found', 'That evidence is not on this commitment.', { evidenceIds: unknown });
+    const verdict = await authorize(scope, { kind: 'ASSESS_ASSUMPTION', standsBehind: a.standsBehind }, v);
+    if (!verdict.ok) return verdict;
+    const b = basis(verdict.value);
+    const events: NewEvent[] = [
+      event(scope, id, 'ASSUMPTION_ASSESSED', { key: a.key, assessment: input.assessment, evidenceIds }, { reason, authority: b, effectiveAt: opts.effectiveAt, raise: opts.textProtection }),
+    ];
+    const open = v.phase === 'PROPOSED' || v.phase === 'ACTIVE';
+    const alreadyBroke = a.assessed?.assessment === 'BROKE';
+    if (input.assessment === 'BROKE' && open && !alreadyBroke) {
+      events.push(
+        event(
+          scope,
+          id,
+          'CONTEXT_CHANGED',
+          { source: { system: 'forge', ref: `forge:assumption:${id}/${a.key}`, url: null }, statement: `An assumption the decision rested on broke: “${a.statement}”`, material: true },
+          { authority: b, effectiveAt: opts.effectiveAt },
+        ),
+      );
+    }
+    return append(scope, id, events);
+  }
+
   // ------------------------------------------------------------ publication
 
   /** Publish a verified outcome for Helm's enterprise memory. Re-publishing unchanged content changes nothing. */
@@ -995,6 +1043,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     recordContextChange,
     reaffirm,
     recordLearning,
+    assessAssumption,
     publishOutcome,
     suggestCandidates,
     listCandidates,

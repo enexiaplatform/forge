@@ -7,7 +7,8 @@
  */
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { type ExecutionEpisode, episodeSections, executionRecords, type RecordGrouping } from '@forge/kernel';
+import { assumptionRecords, type ExecutionEpisode, episodeSections, executionRecords, type RecordGrouping } from '@forge/kernel';
+import { AssumptionRecords } from '../components/records/Assumptions';
 import { ExecutionRecords } from '../components/records/ExecutionRecords';
 import { AppShell } from '../components/shell/AppShell';
 import { EpistemicTag, PhaseTag } from '../components/commitment/tags';
@@ -80,6 +81,10 @@ export function MemoryPage() {
             <Section>
               <SectionHead title="Execution records" small aside={`${records.length} ${plural(records.length, groupBy === 'owner' ? 'owner' : 'principal')}`} />
               <ExecutionRecords records={records} groupBy={groupBy} onGroupBy={setGroupBy} />
+            </Section>
+            <Section>
+              <SectionHead title="Assumptions, as they turned out" small aside="which held, which broke — said by people who were there" />
+              <AssumptionRecords records={assumptionRecords(all)} />
             </Section>
           </>
         }

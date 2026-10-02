@@ -197,6 +197,23 @@ describe('Postgres — what the database itself refuses', () => {
     const closeWith = await svc.appendEvents(a, [newEvent(a, rec.id, { type: 'CLOSED', reason: 'Received in full.', payload: { resolution: 'FULFILLED', supersededBy: null, confirmedWithoutEvidence: false, requestId: null } })]);
     assert.equal(closeWith.ok, true, 'control');
   });
+
+  test('what became of an assumption is a person’s judgment with a reason: a connector’s, a reasonless or an unknown one is refused (ADR-0026)', async () => {
+    const a = person(ORG_A, U.a);
+    const rec = unwrap(await storeAs(U.a).insertCommitment(a, newRecord(a)));
+    const svc = createPostgresStore(createSqlTableClient(runnerAs(pg, 'service_role', null)));
+    const assessed = (over) => newEvent(a, rec.id, { type: 'ASSUMPTION_ASSESSED', reason: 'Released on day six.', payload: { key: 'assumption.1', assessment: 'HELD', evidenceIds: [] }, ...over });
+    for (const bad of [
+      assessed({ actor: { kind: 'SYSTEM', id: 'scm-connector', label: 'scm connector' } }),
+      assessed({ reason: ' ' }),
+      assessed({ payload: { key: 'assumption.1', assessment: 'MOSTLY', evidenceIds: [] } }),
+      assessed({ payload: { key: 'context.account', assessment: 'HELD', evidenceIds: [] } }),
+    ]) {
+      const r = await svc.appendEvents(a, [bad]);
+      assert.match(r.error?.message ?? '', /forge_events_assumption_assessed/);
+    }
+    assert.equal((await storeAs(U.a).appendEvents(a, [assessed()])).ok, true, 'control: the person, with a reason');
+  });
 });
 
 describe('the runtime on Postgres — people and a connector, each as themselves', () => {

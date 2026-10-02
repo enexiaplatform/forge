@@ -14,6 +14,7 @@ import { DueDate, EvidenceSummary } from '../components/commitment/CommitmentRow
 import { ContextList, EvidenceSection, ExecutionSection, HistorySection, LearningSection, OutcomeSection, PromiseSection, WhySection } from '../components/commitment/sections';
 import { PhaseTag } from '../components/commitment/tags';
 import { PrecedentsSection } from '../components/commitment/Precedents';
+import { AssumptionsSection } from '../components/records/Assumptions';
 import { Button, Empty, Kicker, Mono, Panel, Section, SectionHead, TwoColumn } from '../components/ui/primitives';
 import { useForge, useForgeQuery } from '../forge/ForgeContext';
 import { loadLedger } from '../forge/queries';
@@ -77,6 +78,7 @@ export function CommitmentPage() {
             )}
             <WhySection view={view} ancestors={data.ancestors} />
             <PromiseSection view={view} />
+            <AssumptionsSection view={view} />
             <PrecedentsSection reading={precedents} />
             <ExecutionSection view={view} lookup={lookup} />
             <EvidenceSection view={view} />

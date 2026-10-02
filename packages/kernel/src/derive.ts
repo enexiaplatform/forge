@@ -8,8 +8,10 @@
 import { type Actor, humanDate, type Party, sameParty } from './primitives.ts';
 import type { OutcomePublication } from './publication.ts';
 import type {
+  AssumptionAssessment,
   AuthorityBasis,
   CaptureMode,
+  ContextField,
   Change,
   CommitmentEvent,
   CommitmentRecord,
@@ -111,6 +113,25 @@ export type HistoryEntry = {
   readonly summary: string;
 };
 
+/** An assumption the commitment rests on — inherited from its decision — and what a person said became of it (ADR-0026). */
+export type AssumptionState = {
+  readonly key: string;
+  readonly label: string;
+  readonly statement: string;
+  readonly source: ContextField['source'];
+  /** Who stands behind it, as its source names them; null when nobody does. */
+  readonly standsBehind: string | null;
+  /** The latest assessment: an assumption that held can still break later. */
+  readonly assessed: {
+    readonly assessment: AssumptionAssessment;
+    readonly at: string;
+    readonly actor: Actor;
+    readonly reason: string | null;
+    readonly evidenceIds: readonly string[];
+    readonly eventId: string;
+  } | null;
+};
+
 export type CommitmentView = {
   readonly record: CommitmentRecord;
   readonly lens: Lens;
@@ -144,6 +165,7 @@ export type CommitmentView = {
   readonly publications: readonly { readonly publication: OutcomePublication; readonly at: string; readonly actor: Actor; readonly eventId: string }[];
   readonly history: readonly HistoryEntry[];
   readonly events: readonly CommitmentEvent[];
+  readonly assumptions: readonly AssumptionState[];
 };
 
 /** Recorded order: when Forge learned it, then the store's sequence. */
@@ -174,6 +196,7 @@ export function deriveView(record: CommitmentRecord, allEvents: readonly Commitm
   const evidence = new Map<string, EvidenceEntry>();
   let outcome: CommitmentView['outcome'] = null;
   const contextChanges = new Map<string, ContextChangeState>();
+  const assessed = new Map<string, NonNullable<AssumptionState['assessed']>>();
   let resolution: CommitmentView['resolution'] = null;
   const learnings: CommitmentView['learnings'][number][] = [];
   const publications: CommitmentView['publications'][number][] = [];
@@ -301,6 +324,9 @@ export function deriveView(record: CommitmentRecord, allEvents: readonly Commitm
           reaffirmed: null,
         });
         break;
+      case 'ASSUMPTION_ASSESSED':
+        assessed.set(e.payload.key, { assessment: e.payload.assessment, at: e.effectiveAt, actor: e.actor, reason: e.reason, evidenceIds: e.payload.evidenceIds, eventId: e.id });
+        break;
       case 'CONTEXT_REAFFIRMED': {
         const cc = contextChanges.get(e.payload.contextEventId);
         if (cc) contextChanges.set(cc.eventId, { ...cc, reaffirmed: { at: e.effectiveAt, by: e.actor, reason: e.reason } });
@@ -362,6 +388,9 @@ export function deriveView(record: CommitmentRecord, allEvents: readonly Commitm
     requirements: terms.evidence.map((r) => requirementState(r, evidenceEntries)),
     outcome,
     contextChanges: [...contextChanges.values()],
+    assumptions: record.context
+      .filter((c) => c.epistemic === 'ASSUMPTION')
+      .map((c) => ({ key: c.key, label: c.label, statement: c.value, source: c.source, standsBehind: c.standsBehind ?? null, assessed: assessed.get(c.key) ?? null })),
     resolution,
     learnings,
     publications,
@@ -467,6 +496,8 @@ export function describeEvent(e: CommitmentEvent): string {
       return `${e.payload.learning.kind === 'LESSON' ? 'Lesson' : 'Explanation'}: ${e.payload.learning.statement}`;
     case 'OUTCOME_PUBLISHED':
       return `Verified outcome published for Helm (${e.payload.publication.fingerprint})`;
+    case 'ASSUMPTION_ASSESSED':
+      return `Assumption ${e.payload.assessment === 'HELD' ? 'held' : 'broke'}: ${e.payload.key}`;
   }
 }
 

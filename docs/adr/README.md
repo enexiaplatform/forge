@@ -29,3 +29,4 @@ Each decision, why it was made, and what it costs. Format: context · decision �
 | [0023](0023-the-transport-between-the-products.md) | The transport: Forge sends outcomes as the person to Helm's own intake host and derives what is pending; Forge hosts its Memoire receiver |
 | [0024](0024-words-carry-only-what-their-writer-could-read.md) | Words carry only the classes of their commitment's ceiling that their writer could read — a cleared writer is sealed as before |
 | [0025](0025-precedents-bring-lessons-back.md) | Precedents: concluded commitments that resemble this one, and lessons that may apply, as labelled inference — never ranked |
+| [0026](0026-what-became-of-the-assumptions.md) | What became of the assumptions: a person says held or broke, with a reason; a broken one asks the principal; across decisions, counts and cases — never a rate |

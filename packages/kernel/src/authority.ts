@@ -35,6 +35,7 @@ export type AuthorityAct =
   | { readonly kind: 'RECORD_CONTEXT_CHANGE' }
   | { readonly kind: 'REAFFIRM' }
   | { readonly kind: 'RECORD_LEARNING' }
+  | { readonly kind: 'ASSESS_ASSUMPTION'; readonly standsBehind: string | null }
   | { readonly kind: 'REOPEN' }
   | { readonly kind: 'PUBLISH_OUTCOME' }
   | { readonly kind: 'SUGGEST_CANDIDATE' }
@@ -166,6 +167,12 @@ export const interimAuthority: ImmediateAuthority = {
         return principal
           ? allowed('principal-holds-the-promise', 'The party the promise was made to decides whether it still stands.')
           : refused('principal-holds-the-promise', `Only ${view.terms.principal.label} may do this.`);
+      case 'ASSESS_ASSUMPTION': {
+        const behind = act.standsBehind !== null && scope.actsAs.some((p) => p.label === act.standsBehind);
+        return party || manager || behind
+          ? allowed('party-assesses-assumption', 'Those who were there — and whoever stands behind the assumption — say whether it held; it stays attributed to them.')
+          : refused('party-assesses-assumption', 'Only the owner, the principal, a manager or whoever stands behind the assumption may say what became of it.');
+      }
       case 'RECORD_LEARNING':
         return hasRole(scope.role, 'member')
           ? allowed('member-records-learning', 'Anyone who was part of it may say what the enterprise should remember; it stays attributed.')

@@ -177,6 +177,8 @@ export type ContextField = {
   readonly source: SourceRef;
   /** The shared enterprise entity it is about, when there is one: 'memoire:account:rohto-vn'. */
   readonly entityRef: string | null;
+  /** For an assumption: who stands behind it, as its source names them — they may say what became of it (ADR-0026). */
+  readonly standsBehind?: string | null;
 };
 
 // --------------------------------------------------------------- commitment
@@ -350,6 +352,15 @@ export type Learning = {
   readonly appliesTo: string | null;
 };
 
+// -------------------------------------------------------------- assumptions
+
+/**
+ * What a person who was there says became of an assumption the commitment rests on (ADR-0026): it held, or it broke.
+ * Their judgment, attributed, with the reason they give — never Forge's inference.
+ */
+export const assumptionAssessments = ['HELD', 'BROKE'] as const;
+export type AssumptionAssessment = (typeof assumptionAssessments)[number];
+
 // ---------------------------------------------------------------- authority
 
 export type AuthorityBasis = {
@@ -390,6 +401,8 @@ export type EventPayloads = {
   CLOSED: { readonly resolution: Resolution; readonly supersededBy: string | null; readonly confirmedWithoutEvidence: boolean; readonly requestId: string | null };
   REOPENED: Record<string, never>;
   LEARNING_RECORDED: { readonly learning: Learning };
+  /** The context field (`assumption.N`) it is about, what became of it, and any evidence it points to. */
+  ASSUMPTION_ASSESSED: { readonly key: string; readonly assessment: AssumptionAssessment; readonly evidenceIds: readonly string[] };
   OUTCOME_PUBLISHED: { readonly publication: OutcomePublication };
 };
 
@@ -413,6 +426,7 @@ export const eventTypes = [
   'REOPENED',
   'LEARNING_RECORDED',
   'OUTCOME_PUBLISHED',
+  'ASSUMPTION_ASSESSED',
 ] as const satisfies readonly EventType[];
 
 type EventOf<T extends EventType> = {

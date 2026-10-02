@@ -63,6 +63,7 @@ CommitmentEvent (append-only, many)
   DEPENDENCY_DECLARED · DEPENDENCY_SETTLED · EXECUTION_LINKED · ACTIVITY_OBSERVED
   EVIDENCE_RECORDED · EVIDENCE_DISPUTED · OUTCOME_OBSERVED
   CONTEXT_CHANGED · CONTEXT_REAFFIRMED · CLOSED · REOPENED · LEARNING_RECORDED
+  OUTCOME_PUBLISHED · ASSUMPTION_ASSESSED
   each with: actor (PERSON | AGENT | SYSTEM) · effective time · record time · reason · authority verdict · idempotency key
 
 Derived at a lens, never stored (derive.ts, conditions.ts, variance.ts, episode.ts)
@@ -224,6 +225,11 @@ nobody classifies a sentence, and nothing a cleared writer wrote is lowered.
 **Precedents** (ADR-0025): when something begins — a draft at intake, a commitment being accepted — Forge brings back
 the concluded commitments that resemble it, every tie stated, with how they ended and what people said explains it, and
 the lessons whose stated scope names it. The match is INFERENCE; nothing is ranked.
+
+**Assumptions** (ADR-0026): a person who was there — or whoever stands behind it — says whether an assumption the
+decision rested on held or broke, with the reason. A broken one on an open commitment is a material change of context,
+so the principal is asked whether the promise still stands; an ended decision with unexamined assumptions asks once,
+noted. The memory page shows, across decisions, which held and which broke — counts and cases, never a rate.
 
 **Execution records** (ADR-0014) show, per owner or principal, what the ledger
 observed — endings, timing against the first promised date, date changes, recurring

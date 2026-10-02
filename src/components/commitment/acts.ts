@@ -20,6 +20,7 @@ export const ACT_LABELS: Record<AskAct, string> = {
   RECORD_LEARNING: 'Record learning',
   SETTLE_DEPENDENCY: 'Settle a dependency',
   PUBLISH_OUTCOME: 'Publish the outcome to Helm',
+  ASSESS_ASSUMPTION: 'Say what became of an assumption',
 };
 
 function probe(act: AskAct, v: CommitmentView, scope: Scope): AuthorityAct | null {
@@ -50,6 +51,8 @@ function probe(act: AskAct, v: CommitmentView, scope: Scope): AuthorityAct | nul
       return { kind: 'SETTLE_DEPENDENCY' };
     case 'PUBLISH_OUTCOME':
       return { kind: 'PUBLISH_OUTCOME' };
+    case 'ASSESS_ASSUMPTION':
+      return v.assumptions.length > 0 ? { kind: 'ASSESS_ASSUMPTION', standsBehind: v.assumptions.find((a) => scope.actsAs.some((p) => p.label === a.standsBehind))?.standsBehind ?? null } : null;
   }
 }
 
@@ -72,6 +75,7 @@ export function availableActs(v: CommitmentView, scope: Scope): ActOffer[] {
     if (v.dependencies.some((d) => d.settled === null && d.dependency.on.kind !== 'COMMITMENT')) want.push({ act: 'SETTLE_DEPENDENCY' });
   }
   if (v.phase !== 'CLOSED') want.push({ act: 'REQUEST_CHANGE' });
+  if (v.assumptions.length > 0 && v.phase !== 'PROPOSED') want.push({ act: 'ASSESS_ASSUMPTION' });
   if (v.phase === 'CLOSED') {
     if (v.terms.measures.length > 0 || v.terms.evidence.some((r) => r.level === 'OUTCOME')) want.push({ act: 'RECORD_OUTCOME' });
     want.push({ act: 'RECORD_LEARNING' });
