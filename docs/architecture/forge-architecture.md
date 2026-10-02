@@ -209,7 +209,9 @@ episode by a typed, pinned `EXECUTION_EPISODE` reference once a Helm manager has
 
 **Sensitivity** (ADR-0017): every fact keeps the class its source gave it, and everything derived from it carries the
 union; protected values are sealed and read only under Helm's own clearance; an uncleared reader sees that a value
-exists and what status it supports, never the value.
+exists and what status it supports, never the value. Words people write — reasons, explanations, lessons — take the
+**ceiling** of their commitment, the union of every class it rests on when they are written, and are sealed with it
+(ADR-0020); nobody classifies a sentence, and nothing lowers it.
 
 **Execution records** (ADR-0014) show, per owner or principal, what the ledger
 observed — endings, timing against the first promised date, date changes, recurring
@@ -221,10 +223,10 @@ sample size, ordered by name, and never a score, rank or rating.
 The store is a port with two implementations held to one conformance suite
 (`kernel/test/conformance.mjs`): the in-memory reference, and `postgres.ts` over a
 narrow `TableClient` that runs on supabase-js (`createSupabaseTableClient`) or raw SQL.
-Three migrations: `forge_foundation` (commitments, events, observations),
-`forge_candidates_and_publication` (candidates, dispositions, publication), and
-`forge_helm_decision_visibility` (ADR-0015). **None has been applied to the shared
-Supabase project.** The progression is Local → Staging (an isolated branch) → Helm
+Five migrations: `forge_foundation` (commitments, events, observations),
+`forge_candidates_and_publication` (candidates, dispositions, publication),
+`forge_helm_decision_visibility` (ADR-0015), `forge_sensitivity` (ADR-0017) and
+`forge_text_ceiling` (ADR-0020). **None has been applied to the shared Supabase project.** The progression is Local → Staging (an isolated branch) → Helm
 authority integration → production (ADR-0013).
 
 ## 13. Verification
@@ -247,12 +249,12 @@ Each new rule was broken on purpose and seen to catch it.
 
 ## 14. What is not proven
 
-- **The shared database.** All three migrations are proven on PGlite with Helm's real
+- **The shared database.** All five migrations are proven on PGlite with Helm's real
   migrations — not on the shared project, and not applied there. No staging branch exists.
 - **Authority in the database, and a trusted authority at all.** Who may accept,
   approve or close is the runtime's interim policy until Helm's runtime answers the port.
-- **Free text and sensitivity.** Reasons and learnings people write are not classified; Forge cannot tell whether
-  they quote a protected value (ADR-0017).
+- **Free text beyond events.** Reasons and learnings take their commitment's ceiling and are sealed (ADR-0020); a
+  candidate's dismissal reason is still open, because the notes it answers carry no class yet.
 - **A transport between the products.** Submissions to Helm are composed in the integration suite; no server sends them yet.
 - **Live services.** Supabase Auth, PostgREST, Memoire's deployed API and webhook
   delivery over the network, and the Claude API itself (opt-in test only).

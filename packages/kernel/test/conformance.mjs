@@ -106,6 +106,52 @@ export function storeConformance(name, setup) {
       assert.equal((await store.eventsFor(b, [rec.id])).value.length, 0);
     });
 
+    test('words written on a protected commitment keep its ceiling: below it the store refuses them; at it they are sealed', async () => {
+      const { store, a, a2 } = await setup();
+      const protectedTerms = { ...terms(), measures: [{ key: 'GrossMarginPct', label: 'Gross margin %', comparator: 'AT_LEAST', expected: '32.3878', unit: '%', statement: null, source: { system: 'helm', ref: 'helm:value-node:node-margin@2026-10-01T00:00:00.000Z', url: null }, metricKey: 'GrossMarginPct', protection: ['FINANCIAL_SENSITIVE'] }] };
+      const rec = (await store.insertCommitment(a, newRecord(a, { terms: protectedTerms }))).value;
+      const said = 'Accepted: margin of 31.4 is enough to carry it.';
+
+      const below = await store.appendEvents(a, [newEvent(a, rec.id, { reason: said })]);
+      assert.equal(below.ok, false, 'a reason stored less protected than the commitment it is written on');
+      assert.equal(below.error.code, 'event.text_below_ceiling');
+
+      const accepted = newEvent(a, rec.id, { reason: said, textProtection: ['FINANCIAL_SENSITIVE'] });
+      const lesson = newEvent(a, rec.id, {
+        type: 'LEARNING_RECORDED',
+        textProtection: ['FINANCIAL_SENSITIVE'],
+        payload: { learning: { id: uid('lrn'), kind: 'LESSON', statement: 'Below 31.5 margin, re-labelling eats the reallocation.', appliesTo: 'transfers of consignment stock' } },
+      });
+      const written = await store.appendEvents(a, [accepted, lesson]);
+      assert.equal(written.ok, true, JSON.stringify(written.error));
+      assert.equal(written.value[0].reason, said, 'the writer gets back what they wrote');
+
+      const mine = (await store.eventsFor(a, [rec.id])).value;
+      assert.equal(mine.find((x) => x.id === accepted.id).reason, said);
+      assert.equal(mine.find((x) => x.id === lesson.id).payload.learning.statement, lesson.payload.learning.statement);
+      assert.equal(mine.find((x) => x.id === lesson.id).textWithheld, undefined);
+
+      const theirs = (await store.eventsFor(a2, [rec.id])).value;
+      const r = theirs.find((x) => x.id === accepted.id);
+      assert.match(r.reason, /^Withheld: written on a commitment that rests on financially sensitive values/);
+      assert.deepEqual(r.textWithheld, ['FINANCIAL_SENSITIVE'], 'never a silent absence');
+      const l = theirs.find((x) => x.id === lesson.id).payload.learning;
+      assert.doesNotMatch(JSON.stringify(l), /31\.5|consignment/);
+      assert.equal(l.kind, 'LESSON', 'what kind of thing was said is not withheld');
+    });
+
+    test('the ceiling rises with what the commitment comes to rest on; words written before keep what they had', async () => {
+      const { store, a, a2 } = await setup();
+      const rec = (await store.insertCommitment(a, newRecord(a))).value;
+      const early = newEvent(a, rec.id, { reason: 'Accepted before anything protected was known.' });
+      assert.equal((await store.appendEvents(a, [early])).ok, true);
+      assert.equal((await store.appendEvents(a, [protectedEvidence(a, rec.id)])).ok, true);
+      const later = await store.appendEvents(a, [newEvent(a, rec.id, { type: 'EVIDENCE_DISPUTED', reason: 'The margin is wrong.', payload: { evidenceId: 'x' } })]);
+      assert.equal(later.ok, false);
+      assert.equal(later.error.code, 'event.text_below_ceiling');
+      assert.equal((await store.eventsFor(a2, [rec.id])).value.find((x) => x.id === early.id).reason, early.reason);
+    });
+
     test('a commitment round-trips exactly, and the store — not the caller — stamps its record time', async () => {
       const { store, a } = await setup();
       const rec = newRecord(a);

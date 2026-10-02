@@ -175,8 +175,14 @@ export function assembleEpisode(v: CommitmentView): ExecutionEpisode {
     parentRef: v.record.parentId ? `forge:commitment:${v.record.parentId}` : null,
     sections,
     variance,
-    protection: joinProtection(...v.evidence.map((e) => e.item.protection), v.outcome?.outcome.protection, ...variance.measures.filter((m) => m.actual !== null || m.withheld).map((m) => m.protection)),
-    withheld: joinProtection(...v.evidence.map((e) => e.item.withheld), v.outcome?.outcome.withheld),
+    protection: joinProtection(
+      ...v.evidence.map((e) => e.item.protection),
+      v.outcome?.outcome.protection,
+      ...variance.measures.filter((m) => m.actual !== null || m.withheld).map((m) => m.protection),
+      // The reasons and learnings it quotes carry the class they were written at.
+      ...v.events.map((e) => e.textProtection),
+    ),
+    withheld: joinProtection(...v.evidence.map((e) => e.item.withheld), v.outcome?.outcome.withheld, ...v.events.map((e) => e.textWithheld)),
     // Content only: the same record read at two lenses that saw the same events fingerprints identically.
     fingerprint: fingerprint('fep', { id, sections }),
   };

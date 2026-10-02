@@ -9,6 +9,7 @@ import {
   type AskAct,
   type CommitmentView,
   deliveryResolutions,
+  describeProtection,
   type EvidenceRequirement,
   isLive,
   isWatchable,
@@ -16,6 +17,7 @@ import {
   type Resolution,
   resolutions,
   type Result,
+  textCeiling,
   verifyOutcome,
 } from '@forge/kernel';
 import { useForge } from '../../forge/ForgeContext';
@@ -140,11 +142,19 @@ export function ActionDialog({ view, act, subject = null, onClose }: Props) {
     }
   })();
 
+  // ADR-0017: words written here take the classes this commitment rests on; say so before anyone writes them.
+  const ceiling = textCeiling(view.record, view.events);
+
   return (
     <Modal title={title} kicker={kicker} onClose={onClose}>
       {error && (
         <div className="mb-4">
           <Notice tone="red">{error}</Notice>
+        </div>
+      )}
+      {ceiling.length > 0 && act !== 'RECORD_EVIDENCE' && act !== 'RECORD_OUTCOME' && act !== 'PUBLISH_OUTCOME' && (
+        <div className="mb-4">
+          <Notice>This commitment rests on {describeProtection(ceiling)} values, so what you write here is sealed with them and shown only to people Helm has cleared.</Notice>
         </div>
       )}
       {body}

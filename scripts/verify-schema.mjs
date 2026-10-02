@@ -16,6 +16,9 @@
  *  - Sensitivity never lowers (ADR-0017): sealed values and protected
  *    observations are read only under Helm's clearance, and protected values
  *    are moved off the event row by the seal trigger.
+ *  - Words keep a class (ADR-0017, amended): every free-text column is covered
+ *    by a protection column, or named here as a residual with its reason; and
+ *    the ceiling trigger refuses words stored below their commitment's ceiling.
  *
  * The behaviour behind these lines is proven on Postgres by
  * packages/kernel/test/postgres.test.mjs; this contract catches a migration
@@ -32,6 +35,9 @@ const FORBIDDEN_COLUMNS = ['status', 'state', 'phase', 'score', 'rating', 'rank'
 
 let tables = 0;
 const finalPolicies = new Map();
+const FREE_TEXT = /^(reason|summary|statement|note|notes|explanation|lesson|comment|body|narrative)$/;
+const columnsOf = new Map(); // table → every column it has by the last migration
+const freeText = []; // [file, table, column]
 for (const file of files) {
   const raw = readFileSync(join(dir, file), 'utf8');
   const sql = raw.replace(/--.*$/gm, '');
@@ -47,6 +53,8 @@ for (const file of files) {
       .filter((l) => /^[a-z_]+\s/.test(l) && !/^(CONSTRAINT|PRIMARY|UNIQUE|CHECK|FOREIGN)\b/i.test(l))
       .map((l) => l.split(/\s+/)[0]);
     for (const c of columns) if (FORBIDDEN_COLUMNS.includes(c)) violations.push(`${file}: ${table}.${c} — state is derived, never stored`);
+    columnsOf.set(table, new Set(columns));
+    for (const c of columns) if (FREE_TEXT.test(c)) freeText.push([file, table, c]);
 
     const has = (re) => re.test(sql);
     if (!has(new RegExp(`ALTER\\s+TABLE\\s+public\\.${table}\\s+ENABLE\\s+ROW\\s+LEVEL\\s+SECURITY`, 'i'))) violations.push(`${file}: ${table} has no row-level security`);
@@ -65,6 +73,9 @@ for (const file of files) {
 
   for (const m of sql.matchAll(/ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?([a-z_.]+)\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_]+)/gi)) {
     if (FORBIDDEN_COLUMNS.includes(m[2])) violations.push(`${file}: ${m[1]}.${m[2]} — state is derived, never stored`);
+    const t = m[1].replace(/^public\./, '');
+    columnsOf.set(t, new Set([...(columnsOf.get(t) ?? []), m[2]]));
+    if (FREE_TEXT.test(m[2])) freeText.push([file, t, m[2]]);
   }
 
   for (const m of sql.matchAll(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([\w.]+)\s*\([^)]*\)([\s\S]*?)\bAS\s+\$/gi)) {
@@ -97,11 +108,28 @@ if (!lastSealTrigger || !/^CREATE/i.test(lastSealTrigger[1]) || !/BEFORE\s+INSER
   violations.push('forge_events_seal is not the last word on forge_commitment_events: protected values could stay on the event row');
 }
 
+// ADR-0017, amended: words people or systems write carry a class — nobody can classify a sentence after the fact.
+const CLASSED_BY = { 'forge_commitment_events.reason': 'text_protection', 'forge_observations.summary': 'protection' };
+const RESIDUAL = {
+  'forge_candidate_dispositions.reason': 'why a candidate read from notes is not a commitment; the notes it answers carry no class yet',
+};
+for (const [file, table, column] of freeText) {
+  const key = `${table}.${column}`;
+  if (RESIDUAL[key]) continue;
+  const by = CLASSED_BY[key];
+  if (!by) violations.push(`${file}: ${key} is free text without a class — cover it with a protection column (ADR-0017)`);
+  else if (!columnsOf.get(table)?.has(by)) violations.push(`${key} is free text, and ${table}.${by} no longer carries its class`);
+}
+const lastCeiling = [...all.matchAll(/(DROP|CREATE)\s+TRIGGER\s+(?:IF\s+EXISTS\s+)?forge_events_ceiling\b[^;]*;/gi)].pop();
+if (!lastCeiling || !/^CREATE/i.test(lastCeiling[1]) || !/BEFORE\s+INSERT\s+ON\s+public\.forge_commitment_events/i.test(lastCeiling[0])) {
+  violations.push('forge_events_ceiling is not the last word on forge_commitment_events: words could be stored below their commitment’s ceiling');
+}
+
 if (violations.length > 0) {
   console.error(`verify:schema — ${violations.length} violation(s):`);
   for (const v of violations) console.error(`  ✖ ${v}`);
   process.exit(1);
 }
 console.log(
-  `verify:schema — ${files.length} migration(s), ${tables} forge tables: namespaced, no stored state, row-level security, append-only, database record time, anon revoked, no client update or delete, Helm’s decision visibility inherited, Helm’s clearance enforced on protected values, definer functions pinned.`,
+  `verify:schema — ${files.length} migration(s), ${tables} forge tables: namespaced, no stored state, row-level security, append-only, database record time, anon revoked, no client update or delete, Helm’s decision visibility inherited, Helm’s clearance enforced on protected values, words kept at their ceiling, definer functions pinned.`,
 );

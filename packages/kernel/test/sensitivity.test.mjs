@@ -6,7 +6,7 @@
 import { test, describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { isCleared, joinProtection, protectionOf, readAs, sealEvent, unsealEvent, unwrap, varianceOf, verifyOutcome } from '../src/index.ts';
-import { GM, connector, gm, helmOrigin, scm, setup } from './helpers.mjs';
+import { GM, connector, gm, helmOrigin, scm, setup, transferTerms } from './helpers.mjs';
 
 const NODE = 'helm:value-node:node-margin@2026-10-01T00:00:00.000Z';
 const FIN = ['FINANCIAL_SENSITIVE'];
@@ -48,6 +48,19 @@ describe('a protected fact keeps its protection, all the way to Helm', () => {
       realizedValue: [{ dimension: 'MARGIN', effect: 'PROTECTED', statement: '0.97 points under the committed future.', amount: null, unit: null }],
       basis: [evidenceId],
     }));
+    unwrap(await env.runtime.recordLearning(cleared, id, { kind: 'EXPLANATION', statement: 'Re-labelling and QC rework took 0.6 points of margin.', appliesTo: null }));
+  });
+
+  test('words: the close reason and the explanation take the commitment’s ceiling, and are withheld from an uncleared reader', async () => {
+    const theirs = unwrap(await env.runtime.view(scm, id));
+    const mine = unwrap(await env.runtime.view(cleared, id));
+    assert.match(mine.resolution.reason, /margin landed under/);
+    assert.match(theirs.resolution.reason, /^Withheld: written on a commitment that rests on financially sensitive values/);
+    assert.match(mine.learnings[0].learning.statement, /0\.6 points/);
+    assert.doesNotMatch(JSON.stringify(theirs.learnings), /0\.6/);
+    assert.equal(theirs.learnings[0].learning.kind, 'EXPLANATION');
+    const close = mine.events.find((e) => e.type === 'CLOSED' || e.type === 'CHANGE_REQUESTED' || e.type === 'TERMS_CHANGED');
+    assert.deepEqual(close.textProtection, FIN, 'stamped by the runtime: nobody classified the sentence');
   });
 
   test('evidence: an uncleared reader sees that Helm proved it, not the value — and the status is the same for both', async () => {
@@ -93,6 +106,36 @@ describe('a protected fact keeps its protection, all the way to Helm', () => {
     assert.equal(seenBy.measures[0].actual, null);
     assert.equal(seenBy.measures[0].withheld, true);
     assert.equal(seenBy.fingerprint, published.fingerprint, 'the same publication, read with less');
+    assert.match(published.explanations[0].statement, /0\.6 points/);
+    assert.doesNotMatch(JSON.stringify(seenBy.explanations), /0\.6/, 'what explains a sealed outcome is sealed with it');
+  });
+});
+
+describe('words keep the ceiling of the commitment they are written on', () => {
+  test('on a commitment that rests on nothing protected, words stay open — unless the writer raises them', async () => {
+    const env = setup();
+    const id = unwrap(await env.runtime.propose(gm, { origin: helmOrigin, terms: transferTerms() })).record.id;
+    unwrap(await env.runtime.accept(scm, id, { reason: 'Accepted; the warehouse confirmed space.' }));
+    const accepted = unwrap(await env.runtime.view(gm, id)).events.find((e) => e.type === 'ACCEPTED');
+    assert.equal(accepted.reason, 'Accepted; the warehouse confirmed space.');
+    assert.equal(accepted.textProtection, undefined);
+
+    unwrap(await env.runtime.recordLearning(scm, id, { kind: 'LESSON', statement: 'Ask HR before moving the night shift.', appliesTo: null }, { textProtection: ['HR_RESTRICTED'] }));
+    const hr = { ...gm, clearances: ['HR_RESTRICTED'] };
+    assert.match(unwrap(await env.runtime.view(hr, id)).learnings[0].learning.statement, /night shift/);
+    assert.doesNotMatch(JSON.stringify(unwrap(await env.runtime.view(gm, id)).learnings), /night shift/);
+    assert.deepEqual(unwrap(await env.runtime.episode(hr, id)).protection, ['HR_RESTRICTED'], 'the episode quoting it carries its class, so Helm receives it at least as protected');
+  });
+
+  test('a writer cannot lower words below the ceiling: the store refuses what the runtime would never write', async () => {
+    const env = setup();
+    const id = unwrap(await env.runtime.propose(cleared, { origin: helmOrigin, terms: outcomeTerms })).record.id;
+    const written = await env.store.appendEvents(cleared, [{
+      id: 'evt-lowered', orgId: cleared.orgId, commitmentId: id, type: 'DECLINED', effectiveAt: '2026-09-26T09:00:00.000Z',
+      actor: cleared.actor, reason: 'Margin 31 is too thin.', textProtection: [], authority: null, idempotencyKey: null, payload: { party: GM },
+    }]);
+    assert.equal(written.ok, false);
+    assert.equal(written.error.code, 'event.text_below_ceiling');
   });
 });
 

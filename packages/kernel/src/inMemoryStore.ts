@@ -7,7 +7,7 @@
 import { type Clock, fail, ok, type Result } from './primitives.ts';
 import type { CommitmentFilter, CommitmentStore } from './port.ts';
 import type { CommitmentEvent, CommitmentRecord } from './types.ts';
-import { readAs } from './sensitivity.ts';
+import { readAs, textCeiling, textMeetsCeiling } from './sensitivity.ts';
 import { orderEvents } from './derive.ts';
 
 export function createInMemoryStore(clock: Clock): CommitmentStore & { snapshot(): { records: CommitmentRecord[]; events: CommitmentEvent[] } } {
@@ -34,7 +34,7 @@ export function createInMemoryStore(clock: Clock): CommitmentStore & { snapshot(
     async appendEvents(scope, batch) {
       // Validate the whole batch before writing any of it.
       const batchKeys = new Set<string>();
-      for (const e of batch) {
+      for (const [i, e] of batch.entries()) {
         if (e.orgId !== scope.orgId) return fail('tenant.mismatch', 'An event can only be written into the reader’s own organization.');
         const rec = records.get(e.commitmentId);
         if (!rec || rec.orgId !== scope.orgId) return fail('commitment.not_found', 'The commitment does not exist.');
@@ -42,6 +42,11 @@ export function createInMemoryStore(clock: Clock): CommitmentStore & { snapshot(
           const k = `${e.orgId}|${e.idempotencyKey}`;
           if (keys.has(k) || batchKeys.has(k)) return fail('event.duplicate_idempotency_key', 'That event has already been recorded.');
           batchKeys.add(k);
+        }
+        // ADR-0017: words are protected at least as well as the commitment they are written on.
+        const before = [...events.filter((x) => x.commitmentId === e.commitmentId), ...batch.slice(0, i).filter((x) => x.commitmentId === e.commitmentId)];
+        if (!textMeetsCeiling(e, textCeiling(rec, before))) {
+          return fail('event.text_below_ceiling', 'Words written on this commitment must carry every class it rests on; they cannot be stored less protected.');
         }
       }
       const now = clock.now();

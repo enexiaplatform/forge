@@ -8,7 +8,7 @@
 -- request.jwt.claims), so row-level security, guards and grants decide. A failed check raises
 -- 'STAGING CONTRACT FAILED: <check>: <detail>' and stops the run; a passing run returns one row per check.
 --
---   tenant isolation · inherited Helm visibility · sensitivity propagation · append-only history ·
+--   tenant isolation · inherited Helm visibility · sensitivity propagation · words at their ceiling · append-only history ·
 --   impersonation prevention · idempotency · authority enforced in the database · Forge outcome publication ·
 --   Helm's governed intake
 
@@ -166,6 +166,29 @@ BEGIN
   IF n <> 0 THEN RAISE EXCEPTION 'STAGING CONTRACT FAILED: sensitivity: a reader without Helm clearance read the sealed value'; END IF;
   RESET ROLE;
   INSERT INTO forge_staging_results (contract, detail) VALUES ('sensitivity propagation (Forge)', 'sealed off the row; existence visible, value only under Helm''s clearance; unsealed protected events refused');
+
+  -- ------------------------------------------------- 6b. words at their ceiling
+  -- The commitment now rests on a financially sensitive value; a reason written on it carries that class.
+  PERFORM set_config('request.jwt.claim.sub', gm::text, true); PERFORM set_config('request.jwt.claims', json_build_object('sub', gm, 'role', 'authenticated')::text, true); SET LOCAL ROLE authenticated;
+  refused := false;
+  BEGIN
+    INSERT INTO public.forge_commitment_events (id, org_id, commitment_id, event_type, effective_at, actor, reason, payload)
+      VALUES ('fe_' || run || '_lowered', org_a, fc, 'CONTEXT_REAFFIRMED', now(), jsonb_build_object('kind', 'PERSON', 'id', gm, 'label', 'GM'),
+        'Margin at 31.421 still carries it (SYNTHETIC).', jsonb_build_object('contextEventId', 'none'));
+  EXCEPTION WHEN others THEN refused := true; END;
+  IF NOT refused THEN RAISE EXCEPTION 'STAGING CONTRACT FAILED: words: a reason was stored below the ceiling of the commitment it was written on'; END IF;
+  INSERT INTO public.forge_commitment_events (id, org_id, commitment_id, event_type, effective_at, actor, reason, payload, protection, text_protection, sealed)
+    VALUES ('fe_' || run || '_said', org_a, fc, 'CONTEXT_REAFFIRMED', now(), jsonb_build_object('kind', 'PERSON', 'id', gm, 'label', 'Country GM (SYNTHETIC)'),
+      'Withheld: written on a commitment that rests on financially sensitive values, and shown only to people cleared for them.', jsonb_build_object('contextEventId', 'none'),
+      '["FINANCIAL_SENSITIVE"]'::jsonb, '["FINANCIAL_SENSITIVE"]'::jsonb, jsonb_build_object('text', jsonb_build_object('reason', 'Margin at 31.421 still carries it (SYNTHETIC).')));
+  RESET ROLE;
+  PERFORM set_config('request.jwt.claim.sub', cd::text, true); PERFORM set_config('request.jwt.claims', json_build_object('sub', cd, 'role', 'authenticated')::text, true); SET LOCAL ROLE authenticated;
+  SELECT count(*) INTO n FROM public.forge_commitment_events WHERE id = 'fe_' || run || '_said' AND reason NOT LIKE '%31.421%';
+  IF n <> 1 THEN RAISE EXCEPTION 'STAGING CONTRACT FAILED: words: an uncleared reader cannot see that a reason was given, or read the words'; END IF;
+  SELECT count(*) INTO n FROM public.forge_sealed_values WHERE event_id = 'fe_' || run || '_said';
+  IF n <> 0 THEN RAISE EXCEPTION 'STAGING CONTRACT FAILED: words: a reader without Helm clearance read a sealed reason'; END IF;
+  RESET ROLE;
+  INSERT INTO forge_staging_results (contract, detail) VALUES ('words at their ceiling', 'a reason below its commitment''s ceiling refused; at it, sealed and read only under Helm''s clearance');
 
   -- ----------------------------------------- 7. outcome publication · authority
   PERFORM set_config('request.jwt.claim.sub', gm::text, true); PERFORM set_config('request.jwt.claims', json_build_object('sub', gm, 'role', 'authenticated')::text, true); SET LOCAL ROLE authenticated;

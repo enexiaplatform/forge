@@ -427,6 +427,13 @@ type EventOf<T extends EventType> = {
   readonly actor: Actor;
   /** Why. Required wherever the act changes the promise. */
   readonly reason: string | null;
+  /**
+   * The class of the words written with this event — its reason, and a learning's statement: the commitment's
+   * ceiling when they were written, or higher if the writer raised it (ADR-0017). Absent: general management.
+   */
+  readonly textProtection?: Protection;
+  /** Set only on what a reader without clearance receives: the words were withheld from them. */
+  readonly textWithheld?: Protection;
   readonly authority: AuthorityBasis | null;
   /** Makes re-delivery of the same observation a no-op. */
   readonly idempotencyKey: string | null;

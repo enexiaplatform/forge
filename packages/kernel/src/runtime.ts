@@ -64,7 +64,7 @@ import {
   type Terms,
   termFields,
 } from './types.ts';
-import { joinProtection, protectionOf } from './sensitivity.ts';
+import { hasText, joinProtection, type Protection, protectionOf, textCeiling } from './sensitivity.ts';
 
 export type ForgeRuntimeDeps = {
   readonly store: CommitmentStore;
@@ -95,6 +95,11 @@ export type ProposeInput = {
 export type ActOptions = {
   /** When it happened in the world; defaults to now. */
   readonly effectiveAt?: string;
+  /**
+   * A class for the words written with this act, above the commitment's ceiling (ADR-0017). Only ever raises:
+   * the words always carry at least every class the commitment rests on.
+   */
+  readonly textProtection?: Protection;
   /** Re-delivering the same act with the same key changes nothing. */
   readonly idempotencyKey?: string | null;
 };
@@ -187,8 +192,9 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     commitmentId: string,
     type: T,
     payload: EventPayloads[T],
-    opts: { reason?: string | null; authority?: AuthorityBasis | null; effectiveAt?: string; idempotencyKey?: string | null } = {},
+    opts: { reason?: string | null; authority?: AuthorityBasis | null; effectiveAt?: string; idempotencyKey?: string | null; raise?: Protection } = {},
   ): NewEvent {
+    const raised = protectionOf(opts.raise ?? []);
     return {
       id: ids.next('evt'),
       orgId: scope.orgId,
@@ -197,6 +203,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
       effectiveAt: opts.effectiveAt ?? now(),
       actor: scope.actor,
       reason: opts.reason ?? null,
+      ...(raised.length > 0 ? { textProtection: raised } : {}),
       authority: opts.authority ?? null,
       idempotencyKey: opts.idempotencyKey ?? null,
       payload,
@@ -205,10 +212,40 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
 
   async function append(scope: Scope, id: string, events: NewEvent[]): Promise<Result<CommitmentView>> {
     if (events.length > 0) {
-      const written = await store.appendEvents(scope, events);
+      const stamped = await stampText(scope, events);
+      if (!stamped.ok) return stamped;
+      const written = await store.appendEvents(scope, stamped.value);
       if (!written.ok) return written;
     }
     return load(scope, id);
+  }
+
+  /**
+   * Words people write take the ceiling of the commitment they are written on (ADR-0017): every class it rests on
+   * when they are written, joined with whatever the writer raised it to. Nobody classifies a sentence; nothing lowers.
+   */
+  async function stampText(scope: Scope, events: NewEvent[]): Promise<Result<NewEvent[]>> {
+    if (!events.some(hasText)) return ok(events);
+    const out: NewEvent[] = [];
+    const seen = new Map<string, { record: CommitmentRecord; events: readonly (CommitmentEvent | NewEvent)[] }>();
+    for (const e of events) {
+      let on = seen.get(e.commitmentId);
+      if (!on) {
+        const rec = await store.getCommitment(scope, e.commitmentId);
+        if (!rec.ok) return rec;
+        if (rec.value === null) return fail('commitment.not_found', 'That commitment does not exist, or you cannot see it.', { id: e.commitmentId });
+        const evs = await store.eventsFor(scope, [e.commitmentId]);
+        if (!evs.ok) return evs;
+        on = { record: rec.value, events: evs.value };
+      }
+      const textProtection = hasText(e) ? joinProtection(textCeiling(on.record, on.events), e.textProtection) : [];
+      const rest = { ...e } as Record<string, unknown>;
+      delete rest.textProtection;
+      const stamped = (textProtection.length > 0 ? { ...rest, textProtection } : rest) as NewEvent;
+      out.push(stamped);
+      seen.set(e.commitmentId, { record: on.record, events: [...on.events, stamped] });
+    }
+    return ok(out);
   }
 
   /** The act was already recorded under this key: report the commitment as it stands. */
@@ -307,7 +344,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     const verdict = authorize(scope, { kind: 'DECLINE' }, v);
     if (!verdict.ok) return verdict;
     return append(scope, id, [
-      event(scope, id, 'DECLINED', { party: v.terms.owner }, { reason, authority: basis(verdict.value), effectiveAt: opts.effectiveAt }),
+      event(scope, id, 'DECLINED', { party: v.terms.owner }, { reason, authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection }),
     ]);
   }
 
@@ -334,7 +371,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
           id,
           'CHANGE_REQUESTED',
           { requestId, change: c, approver: verdict.value.approver },
-          { reason, authority: basis(verdict.value), effectiveAt: opts.effectiveAt },
+          { reason, authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection },
         ),
       ]);
       return written.ok ? ok({ applied: false, requestId, view: written.value }) : written;
@@ -373,7 +410,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     const verdict = authorize(scope, { kind: 'DECIDE_CHANGE', approver: req.approver }, v);
     if (!verdict.ok) return verdict;
 
-    const decided = event(scope, id, 'CHANGE_DECIDED', { requestId, decision }, { reason, authority: basis(verdict.value), effectiveAt: opts.effectiveAt });
+    const decided = event(scope, id, 'CHANGE_DECIDED', { requestId, decision }, { reason, authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection });
     if (decision === 'REJECTED') return append(scope, id, [decided]);
     const stillValid = await validateChange(scope, v, req.change);
     if (!stillValid.ok) return stillValid;
@@ -403,7 +440,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     if (loaded.value.phase !== 'CLOSED') return fail('commitment.not_closed', 'Only a closed commitment can be reopened.');
     const verdict = authorize(scope, { kind: 'REOPEN' }, loaded.value);
     if (!verdict.ok) return verdict;
-    return append(scope, id, [event(scope, id, 'REOPENED', {}, { reason, authority: basis(verdict.value), effectiveAt: opts.effectiveAt })]);
+    return append(scope, id, [event(scope, id, 'REOPENED', {}, { reason, authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection })]);
   }
 
   async function validateChange(scope: Scope, v: CommitmentView, c: Change): Promise<Result<true>> {
@@ -488,7 +525,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     return append(scope, id, [
       event(scope, id, 'EVIDENCE_RECORDED', { evidence: { ...input, id: ids.next('evd') } }, {
         authority: basis(verdict.value),
-        effectiveAt: opts.effectiveAt,
+        effectiveAt: opts.effectiveAt, raise: opts.textProtection,
         idempotencyKey: opts.idempotencyKey,
       }),
     ]);
@@ -503,7 +540,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     if (entry.disputed !== null) return fail('evidence.already_disputed', 'That evidence is already disputed.');
     const verdict = authorize(scope, { kind: 'DISPUTE_EVIDENCE' }, loaded.value);
     if (!verdict.ok) return verdict;
-    return append(scope, id, [event(scope, id, 'EVIDENCE_DISPUTED', { evidenceId }, { reason, authority: basis(verdict.value), effectiveAt: opts.effectiveAt })]);
+    return append(scope, id, [event(scope, id, 'EVIDENCE_DISPUTED', { evidenceId }, { reason, authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection })]);
   }
 
   // ------------------------------------------------------------ execution
@@ -516,7 +553,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     const verdict = authorize(scope, { kind: 'LINK_EXECUTION' }, loaded.value);
     if (!verdict.ok) return verdict;
     return append(scope, id, [
-      event(scope, id, 'EXECUTION_LINKED', { link: { ...link, id: ids.next('lnk') } }, { authority: basis(verdict.value), effectiveAt: opts.effectiveAt }),
+      event(scope, id, 'EXECUTION_LINKED', { link: { ...link, id: ids.next('lnk') } }, { authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection }),
     ]);
   }
 
@@ -538,7 +575,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     const verdict = authorize(scope, { kind: 'OBSERVE_ACTIVITY' }, loaded.value);
     if (!verdict.ok) return verdict;
     return append(scope, id, [
-      event(scope, id, 'ACTIVITY_OBSERVED', input, { authority: basis(verdict.value), effectiveAt: opts.effectiveAt, idempotencyKey: opts.idempotencyKey }),
+      event(scope, id, 'ACTIVITY_OBSERVED', input, { authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection, idempotencyKey: opts.idempotencyKey }),
     ]);
   }
 
@@ -556,7 +593,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     }
     const verdict = authorize(scope, { kind: 'DECLARE_DEPENDENCY' }, loaded.value);
     if (!verdict.ok) return verdict;
-    return append(scope, id, [event(scope, id, 'DEPENDENCY_DECLARED', { dependency }, { authority: basis(verdict.value), effectiveAt: opts.effectiveAt })]);
+    return append(scope, id, [event(scope, id, 'DEPENDENCY_DECLARED', { dependency }, { authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection })]);
   }
 
   async function settleDependency(
@@ -580,7 +617,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
       event(scope, id, 'DEPENDENCY_SETTLED', { key, observationId: input.observationId }, {
         reason: input.reason ?? null,
         authority: basis(verdict.value),
-        effectiveAt: opts.effectiveAt,
+        effectiveAt: opts.effectiveAt, raise: opts.textProtection,
         idempotencyKey: opts.idempotencyKey,
       }),
     ]);
@@ -611,7 +648,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
       measures: outcome.measures.map((m) => ({ ...m, protection: protectionOf(v.terms.measures.find((x) => x.key === m.key)?.protection ?? []) })),
       protection: joinProtection(...outcome.basis.map((b) => v.evidence.find((e) => e.item.id === b)?.item.protection)),
     };
-    return append(scope, id, [event(scope, id, 'OUTCOME_OBSERVED', { outcome: stamped }, { authority: basis(verdict.value), effectiveAt: opts.effectiveAt })]);
+    return append(scope, id, [event(scope, id, 'OUTCOME_OBSERVED', { outcome: stamped }, { authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection })]);
   }
 
   // -------------------------------------------------------------- context
@@ -631,7 +668,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     const verdict = authorize(scope, { kind: 'RECORD_CONTEXT_CHANGE' }, loaded.value);
     if (!verdict.ok) return verdict;
     return append(scope, id, [
-      event(scope, id, 'CONTEXT_CHANGED', input, { authority: basis(verdict.value), effectiveAt: opts.effectiveAt, idempotencyKey: opts.idempotencyKey }),
+      event(scope, id, 'CONTEXT_CHANGED', input, { authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection, idempotencyKey: opts.idempotencyKey }),
     ]);
   }
 
@@ -644,7 +681,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     if (cc.reaffirmed !== null) return fail('context.already_reaffirmed', 'The commitment was already reaffirmed after this change.');
     const verdict = authorize(scope, { kind: 'REAFFIRM' }, loaded.value);
     if (!verdict.ok) return verdict;
-    return append(scope, id, [event(scope, id, 'CONTEXT_REAFFIRMED', { contextEventId }, { reason, authority: basis(verdict.value), effectiveAt: opts.effectiveAt })]);
+    return append(scope, id, [event(scope, id, 'CONTEXT_REAFFIRMED', { contextEventId }, { reason, authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection })]);
   }
 
   // ------------------------------------------------------------- learning
@@ -656,7 +693,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     const verdict = authorize(scope, { kind: 'RECORD_LEARNING' }, loaded.value);
     if (!verdict.ok) return verdict;
     return append(scope, id, [
-      event(scope, id, 'LEARNING_RECORDED', { learning: { ...input, id: ids.next('lrn') } }, { authority: basis(verdict.value), effectiveAt: opts.effectiveAt }),
+      event(scope, id, 'LEARNING_RECORDED', { learning: { ...input, id: ids.next('lrn') } }, { authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection }),
     ]);
   }
 
@@ -676,7 +713,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     if (!seen.ok) return seen;
     if (seen.value) return ok({ view: loaded.value, publication });
     const written = await append(scope, id, [
-      event(scope, id, 'OUTCOME_PUBLISHED', { publication }, { authority: basis(verdict.value), effectiveAt: opts.effectiveAt, idempotencyKey: key }),
+      event(scope, id, 'OUTCOME_PUBLISHED', { publication }, { authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection, idempotencyKey: key }),
     ]);
     return written.ok ? ok({ view: written.value, publication }) : written;
   }

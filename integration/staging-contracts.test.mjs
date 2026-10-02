@@ -23,13 +23,14 @@ describe('the staging contract suite, proven locally', { skip: helmSkip }, () =>
       'idempotency',
       'append-only history',
       'sensitivity propagation (Forge)',
+      'words at their ceiling',
       'Forge outcome publication',
       'Helm governed intake',
       'authority in the database',
     ]);
     // A second run in the same database: fresh synthetic ids, the same result.
     const again = await db.exec(SCRIPT);
-    assert.equal(again[again.length - 1].rows.length, 9);
+    assert.equal(again[again.length - 1].rows.length, 10);
   });
 
   test('and fails, by name, when a guarantee is removed', async () => {
@@ -37,5 +38,11 @@ describe('the staging contract suite, proven locally', { skip: helmSkip }, () =>
     await db.exec(`DROP POLICY forge_sealed_values_read ON public.forge_sealed_values;
       CREATE POLICY forge_sealed_values_read ON public.forge_sealed_values FOR SELECT TO authenticated USING (public.is_org_member(org_id));`);
     await assert.rejects(() => db.exec(SCRIPT), /STAGING CONTRACT FAILED: sensitivity: a reader without Helm clearance read the sealed value/);
+  });
+
+  test('and fails, by name, when words can be stored below their ceiling', async () => {
+    const db = await ecosystemDatabase();
+    await db.exec('DROP TRIGGER forge_events_ceiling ON public.forge_commitment_events;');
+    await assert.rejects(() => db.exec(SCRIPT), /STAGING CONTRACT FAILED: words: a reason was stored below the ceiling/);
   });
 });

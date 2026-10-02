@@ -16,7 +16,7 @@ import { fail, ok, type Result, type Scope } from './primitives.ts';
 import type { CommitmentFilter, CommitmentStore } from './port.ts';
 import type { CandidateDisposition, CandidateRecord, CandidateStore, NewCandidate, NewDisposition } from './candidates.ts';
 import type { CommitmentEvent, CommitmentRecord, NewCommitmentRecord, NewEvent } from './types.ts';
-import { type Sealed, sealEvent, unsealEvent } from './sensitivity.ts';
+import { hasText, type Protection, protectionOf, type Sealed, sealEvent, unsealEvent } from './sensitivity.ts';
 
 export type Row = Record<string, unknown>;
 
@@ -91,11 +91,12 @@ function eventRow(e: NewEvent): Row {
     event_type: e.type,
     effective_at: e.effectiveAt,
     actor: e.actor,
-    reason: e.reason,
+    reason: s.open.reason,
     authority: e.authority,
     idempotency_key: e.idempotencyKey,
     payload: s.open.payload,
     protection: [...s.protection],
+    text_protection: hasText(e) ? [...protectionOf(e.textProtection ?? [])] : [],
     sealed: s.sealed,
   };
 }
@@ -114,8 +115,12 @@ function toEvent(row: Row): CommitmentEvent {
     authority: row.authority === null || row.authority === undefined ? null : json(row.authority),
     idempotencyKey: row.idempotency_key === null || row.idempotency_key === undefined ? null : String(row.idempotency_key),
     payload: json(row.payload),
+    // Words on a protected commitment are stored open — withheld — and come back only through unsealing.
+    ...(textProtectionOf(row).length > 0 ? { textProtection: textProtectionOf(row), textWithheld: textProtectionOf(row) } : {}),
   } as CommitmentEvent;
 }
+
+const textProtectionOf = (row: Row): Protection => protectionOf((json(row.text_protection ?? []) as string[]) ?? []);
 
 /** Database refusals become kernel errors; a guard's message names its code ('forge.parent_not_found: …'). */
 function translate<T>(r: Result<T>, fallback: string): Result<T> {
@@ -131,7 +136,9 @@ function translate<T>(r: Result<T>, fallback: string): Result<T> {
             ? 'candidate.not_found'
             : guard[1] === 'forge.helm_origin_not_found'
               ? 'commitment.origin_not_found'
-              : guard[1];
+              : guard[1] === 'forge.text_below_ceiling'
+                ? 'event.text_below_ceiling'
+                : guard[1];
     return fail(code, r.error.message.replace(/^.*?forge\.[a-z_]+:\s*/, ''), r.error.details as Record<string, unknown>);
   }
   if (r.error.details?.sqlstate === '23505') {

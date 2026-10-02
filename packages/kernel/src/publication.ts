@@ -94,7 +94,7 @@ export function verifyOutcome(v: CommitmentView): Result<OutcomePublication, { c
     gaps.push({ code: 'not_a_delivery_ending', statement: `It ended ${v.resolution.resolution.toLowerCase().replace(/_/g, ' ')}; there is no outcome of it to verify.` });
   }
   if (v.outcome === null) gaps.push({ code: 'outcome_unrecorded', statement: 'Nobody has recorded what actually happened.' });
-  const withheld = joinProtection(v.outcome?.outcome.withheld, ...v.evidence.map((e) => e.item.withheld));
+  const withheld = joinProtection(v.outcome?.outcome.withheld, ...v.evidence.map((e) => e.item.withheld), ...v.events.map((e) => e.textWithheld));
   if (withheld.length > 0) {
     gaps.push({ code: 'withheld', statement: `Some of what this outcome rests on is ${describeProtection(withheld)} and you are not cleared for it; only someone who can read all of it can publish it.` });
   }

@@ -23,3 +23,4 @@ Each decision, why it was made, and what it costs. Format: context · decision �
 | [0017](0017-sensitivity-never-lowers.md) | A fact keeps its sensitivity wherever it goes: carried, sealed, enforced by Helm's own clearance |
 | [0018](0018-submitting-outcomes-through-helms-governed-intake.md) | Verified outcomes reach Helm through Helm's governed intake, as contextual facts; the genome references the episode, typed and pinned |
 | [0019](0019-decision-fidelity-is-a-record-of-departures.md) | Decision fidelity: where execution departs from what Helm committed, as a derived record — never scored |
+| [0020](0020-words-keep-the-ceiling-of-their-commitment.md) | Words people write take the ceiling of their commitment: stamped, sealed, enforced in both stores — never classified, never lowered |
