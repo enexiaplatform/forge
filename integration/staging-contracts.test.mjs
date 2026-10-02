@@ -24,13 +24,14 @@ describe('the staging contract suite, proven locally', { skip: helmSkip }, () =>
       'append-only history',
       'sensitivity propagation (Forge)',
       'words at their ceiling',
+      "acts bound to Helm's standing",
       'Forge outcome publication',
       'Helm governed intake',
       'authority in the database',
     ]);
     // A second run in the same database: fresh synthetic ids, the same result.
     const again = await db.exec(SCRIPT);
-    assert.equal(again[again.length - 1].rows.length, 10);
+    assert.equal(again[again.length - 1].rows.length, 11);
   });
 
   test('and fails, by name, when a guarantee is removed', async () => {
@@ -38,6 +39,12 @@ describe('the staging contract suite, proven locally', { skip: helmSkip }, () =>
     await db.exec(`DROP POLICY forge_sealed_values_read ON public.forge_sealed_values;
       CREATE POLICY forge_sealed_values_read ON public.forge_sealed_values FOR SELECT TO authenticated USING (public.is_org_member(org_id));`);
     await assert.rejects(() => db.exec(SCRIPT), /STAGING CONTRACT FAILED: sensitivity: a reader without Helm clearance read the sealed value/);
+  });
+
+  test('and fails, by name, when acts no longer need Helm’s standing', async () => {
+    const db = await ecosystemDatabase();
+    await db.exec('DROP TRIGGER forge_events_standing ON public.forge_commitment_events;');
+    await assert.rejects(() => db.exec(SCRIPT), /STAGING CONTRACT FAILED: standing: an act claimed a trusted verdict without Helm's attestation/);
   });
 
   test('and fails, by name, when words can be stored below their ceiling', async () => {

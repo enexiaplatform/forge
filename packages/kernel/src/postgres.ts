@@ -153,14 +153,23 @@ function translate<T>(r: Result<T>, fallback: string): Result<T> {
 
 const SEALED = 'forge_sealed_values';
 
+/** Ids per `in` filter: short enough for a PostgREST URL, far below Postgres's parameter limit. */
+const IN_SLICE = 150;
+const chunks = <T>(xs: readonly T[], size: number): T[][] => Array.from({ length: Math.ceil(xs.length / size) }, (_, i) => xs.slice(i * size, (i + 1) * size));
+const recordedOrder = (a: CommitmentEvent, b: CommitmentEvent): number =>
+  a.recordedAt === b.recordedAt ? (a.commitmentId === b.commitmentId ? a.seq - b.seq : a.commitmentId < b.commitmentId ? -1 : 1) : a.recordedAt < b.recordedAt ? -1 : 1;
+
 /** Merge back the sealed values the database lets this reader see (Helm's clearance decides); the rest stay withheld. */
 async function unsealRows(db: TableClient, scope: Scope, rows: readonly Row[]): Promise<Result<CommitmentEvent[]>> {
   const events = rows.map(toEvent);
   const protectedIds = rows.filter((row) => Array.isArray(json(row.protection ?? [])) && (json(row.protection ?? []) as unknown[]).length > 0).map((row) => String(row.id));
   if (protectedIds.length === 0) return ok(events);
-  const sealed = await db.select(SEALED, { eq: { org_id: scope.orgId }, in: { column: 'event_id', values: protectedIds } });
-  if (!sealed.ok) return sealed;
-  const byId = new Map(sealed.value.map((row) => [String(row.event_id), json(row.payload) as Sealed]));
+  const byId = new Map<string, Sealed>();
+  for (const slice of chunks(protectedIds, IN_SLICE)) {
+    const sealed = await db.select(SEALED, { eq: { org_id: scope.orgId }, in: { column: 'event_id', values: slice }, order: [{ column: 'event_id', ascending: true }] });
+    if (!sealed.ok) return sealed;
+    for (const row of sealed.value) byId.set(String(row.event_id), json(row.payload) as Sealed);
+  }
   return ok(events.map((e) => unsealEvent(e, byId.get(e.id) ?? null)));
 }
 
@@ -185,12 +194,12 @@ export function createPostgresStore(db: TableClient): CommitmentStore {
         r.value
           .map(toEvent)
           .map((e) => unsealEvent(e, sealedBy.get(e.id) ?? null))
-          .sort((a, b) => (a.recordedAt === b.recordedAt ? a.seq - b.seq : a.recordedAt < b.recordedAt ? -1 : 1)),
+          .sort(recordedOrder),
       );
     },
 
     async getCommitment(scope, id) {
-      const r = await db.select(COMMITMENTS, { eq: { org_id: scope.orgId, id } });
+      const r = await db.select(COMMITMENTS, { eq: { org_id: scope.orgId, id }, limit: 1 });
       if (!r.ok) return r;
       return ok(r.value.length === 0 ? null : toCommitment(r.value[0]));
     },
@@ -205,17 +214,46 @@ export function createPostgresStore(db: TableClient): CommitmentStore {
 
     async eventsFor(scope, ids) {
       if (ids.length === 0) return ok([]);
-      const r = await db.select(EVENTS, {
-        eq: { org_id: scope.orgId },
-        in: { column: 'commitment_id', values: ids },
-        order: [{ column: 'recorded_at', ascending: true }, { column: 'seq', ascending: true }],
-      });
-      if (!r.ok) return r;
-      return unsealRows(db, scope, r.value);
+      // An organization's ledger is read in slices: an id list as long as the ledger fits no URL and no parameter list.
+      const rows: Row[] = [];
+      for (const slice of chunks([...new Set(ids)], IN_SLICE)) {
+        const r = await db.select(EVENTS, {
+          eq: { org_id: scope.orgId },
+          in: { column: 'commitment_id', values: slice },
+          order: [{ column: 'recorded_at', ascending: true }, { column: 'seq', ascending: true }, { column: 'id', ascending: true }],
+        });
+        if (!r.ok) return r;
+        rows.push(...r.value);
+      }
+      const events = await unsealRows(db, scope, rows);
+      return events.ok ? ok(events.value.sort(recordedOrder)) : events;
+    },
+
+    async recordedAfter(scope, after, known = () => false) {
+      const since = after === null ? {} : { gt: { column: 'recorded_at', value: after } };
+      // Ids first, rows second: a catch-up re-reads its overlap as ids and reads whole only what the reader lacks.
+      const fetch = async (table: string, order: readonly { column: string; ascending: boolean }[]): Promise<Result<Row[]>> => {
+        const light = await db.select(table, { eq: { org_id: scope.orgId }, ...since, columns: ['id'], order });
+        if (!light.ok) return light;
+        const wanted = light.value.map((r) => String(r.id)).filter((id) => !known(id));
+        const rows: Row[] = [];
+        for (const slice of chunks(wanted, IN_SLICE)) {
+          const r = await db.select(table, { eq: { org_id: scope.orgId }, in: { column: 'id', values: slice }, order });
+          if (!r.ok) return r;
+          rows.push(...r.value);
+        }
+        return ok(rows);
+      };
+      const recs = await fetch(COMMITMENTS, [{ column: 'recorded_at', ascending: true }, { column: 'id', ascending: true }]);
+      if (!recs.ok) return recs;
+      const rows = await fetch(EVENTS, [{ column: 'recorded_at', ascending: true }, { column: 'seq', ascending: true }, { column: 'id', ascending: true }]);
+      if (!rows.ok) return rows;
+      const events = await unsealRows(db, scope, rows.value);
+      return events.ok ? ok({ records: recs.value.map(toCommitment).sort((a, b) => (a.recordedAt === b.recordedAt ? (a.id < b.id ? -1 : 1) : a.recordedAt < b.recordedAt ? -1 : 1)), events: events.value.sort(recordedOrder) }) : events;
     },
 
     async findByIdempotencyKey(scope, key) {
-      const r = await db.select(EVENTS, { eq: { org_id: scope.orgId, idempotency_key: key } });
+      const r = await db.select(EVENTS, { eq: { org_id: scope.orgId, idempotency_key: key }, limit: 1 });
       if (!r.ok) return r;
       if (r.value.length === 0) return ok(null);
       const events = await unsealRows(db, scope, r.value.slice(0, 1));
@@ -306,7 +344,7 @@ export function createPostgresCandidateStore(db: TableClient): CandidateStore {
       return r.ok ? ok(r.value.map(toCandidate)) : r;
     },
     async listDispositions(scope) {
-      const r = await db.select(DISPOSITIONS, { eq: { org_id: scope.orgId }, order: [{ column: 'recorded_at', ascending: true }] });
+      const r = await db.select(DISPOSITIONS, { eq: { org_id: scope.orgId }, order: [{ column: 'recorded_at', ascending: true }, { column: 'id', ascending: true }] });
       return r.ok ? ok(r.value.map(toDisposition)) : r;
     },
   };
@@ -402,8 +440,12 @@ export type PostgrestFilter = PromiseLike<{ data: Row[] | null; error: Postgrest
   lte(column: string, value: unknown): PostgrestFilter;
   order(column: string, options: { ascending: boolean }): PostgrestFilter;
   limit(count: number): PostgrestFilter;
+  range(from: number, to: number): PostgrestFilter;
 };
 export type PostgrestError = { message: string; code?: string; details?: string | null };
+
+/** Rows asked for per request; the server may answer with fewer. */
+const PAGE = 1000;
 
 /** A TableClient over supabase-js — the browser's path, under the signed-in user's own RLS. */
 export function createSupabaseTableClient(client: PostgrestLike): TableClient {
@@ -417,15 +459,26 @@ export function createSupabaseTableClient(client: PostgrestLike): TableClient {
       if (rows.length === 0) return Promise.resolve(ok([]));
       return settle(client.from(table).insert(rows).select());
     },
-    select(table, query) {
-      let q = client.from(table).select(query.columns && query.columns.length > 0 ? query.columns.join(', ') : '*');
-      for (const [column, value] of Object.entries(query.eq ?? {})) q = value === null ? q.is(column, null) : q.eq(column, value);
-      if (query.in) q = q.in(query.in.column, query.in.values);
-      if (query.gt) q = q.gt(query.gt.column, query.gt.value);
-      if (query.lte) q = q.lte(query.lte.column, query.lte.value);
-      for (const o of query.order ?? []) q = q.order(o.column, { ascending: o.ascending });
-      if (query.limit !== undefined) q = q.limit(query.limit);
-      return settle(q);
+    async select(table, query) {
+      const build = (): PostgrestFilter => {
+        let q = client.from(table).select(query.columns && query.columns.length > 0 ? query.columns.join(', ') : '*');
+        for (const [column, value] of Object.entries(query.eq ?? {})) q = value === null ? q.is(column, null) : q.eq(column, value);
+        if (query.in) q = q.in(query.in.column, query.in.values);
+        if (query.gt) q = q.gt(query.gt.column, query.gt.value);
+        if (query.lte) q = q.lte(query.lte.column, query.lte.value);
+        for (const o of query.order ?? []) q = q.order(o.column, { ascending: o.ascending });
+        return q;
+      };
+      if (query.limit !== undefined) return settle(build().limit(query.limit));
+      // PostgREST answers at most its max_rows per request (1 000 on Supabase, possibly fewer) and says nothing when it
+      // cuts: read on from wherever the last page ended until a page comes back empty, so nothing is silently truncated.
+      const rows: Row[] = [];
+      for (;;) {
+        const page = await settle(build().range(rows.length, rows.length + PAGE - 1));
+        if (!page.ok) return page;
+        if (page.value.length === 0) return ok(rows);
+        rows.push(...page.value);
+      }
     },
   };
 }

@@ -360,6 +360,8 @@ export type AuthorityBasis = {
   readonly approvalRequestId: string | null;
   /** Whether the verdict came from a trusted authority service (Helm's), not Forge's interim policy. */
   readonly trusted?: boolean;
+  /** Helm's standing attestation a trusted verdict rests on; the database checks it (ADR-0021). */
+  readonly attestation?: string;
 };
 
 // -------------------------------------------------------------------- events

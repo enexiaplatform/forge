@@ -157,10 +157,15 @@ Every event records the verdict it rested on (policy, rule, statement, approval,
 **trusted or not**). The interim policy's verdicts are untrusted. With
 `requireTrustedAuthority` — on in production — consequential acts (accept, decide a
 change, change, close, reopen) are refused unless a trusted authority answered:
-Helm's Decision & Authority Runtime, when it answers the same port (ADR-0013). **Not
-enforced in the database**: Postgres enforces tenancy, Helm's decision visibility,
-append-only history, record time, and that nobody writes in another person's name —
-not who may accept or approve.
+Helm's Decision & Authority Runtime, when it answers the same port (ADR-0013).
+
+**Helm answers it** (ADR-0021; Helm ADR-0036). `createHelmAuthority` asks Helm's trusted service to attest, from Helm's
+own seat records, that the caller may act for the party who holds the act — themselves, or acting in that person's
+seat — never taking the client's word for whom it acts; Forge's rule then decides with that attested party, and the
+verdict carries Helm's attestation id. **The database checks it**: an event that claims a trusted verdict must name an
+attestation that is Helm's, recent, the writer's own and for the person who holds that act on that commitment
+(`forge_events_standing`); and once an organization is recorded as TRUSTED (`forge_authority_modes`, service role only),
+every consequential event needs one — the interim policy cannot decide them, even from a client that skips the runtime.
 
 ## 9. Human-in-the-loop by exception (§21)
 
@@ -223,10 +228,16 @@ sample size, ordered by name, and never a score, rank or rating.
 The store is a port with two implementations held to one conformance suite
 (`kernel/test/conformance.mjs`): the in-memory reference, and `postgres.ts` over a
 narrow `TableClient` that runs on supabase-js (`createSupabaseTableClient`) or raw SQL.
-Five migrations: `forge_foundation` (commitments, events, observations),
+Six migrations: `forge_foundation` (commitments, events, observations),
 `forge_candidates_and_publication` (candidates, dispositions, publication),
-`forge_helm_decision_visibility` (ADR-0015), `forge_sensitivity` (ADR-0017) and
-`forge_text_ceiling` (ADR-0020). **None has been applied to the shared Supabase project.** The progression is Local → Staging (an isolated branch) → Helm
+`forge_helm_decision_visibility` (ADR-0015), `forge_sensitivity` (ADR-0017),
+`forge_text_ceiling` (ADR-0020) and `forge_trusted_standing` (ADR-0021). **None has been applied to the shared Supabase
+project.**
+
+Reading at scale (ADR-0022): the supabase-js client reads page by page until a page comes back empty, so PostgREST's
+row cap never truncates a ledger; id filters go in slices; `createLedgerCache` keeps a reader's ledger warm and asks
+only for what was recorded since, re-reading an overlap window as ids; the runtime remembers derived views per reader
+and commitment. None of it is stored state. The progression is Local → Staging (an isolated branch) → Helm
 authority integration → production (ADR-0013).
 
 ## 13. Verification
@@ -240,9 +251,10 @@ authority integration → production (ADR-0013).
 | Fabric | intake, matchers, ingestion, outbound, Memoire, and extraction governance |
 | Server | the Claude extractor's request and every failure mode, with an injected client; `/api/extract`; an opt-in live test (`FORGE_LIVE_LLM=1`) |
 | Story | the Meridian story moment by moment, now with a Memoire obligation, meeting-note candidates and a published outcome |
-| **Integration** | the three loops against Helm's and Memoire's own code and migrations (ADR-0016); skipped, and saying so, without the sibling repositories |
+| **Integration** | four loops against Helm's and Memoire's own code and migrations (ADR-0016) — loop 4 runs Helm's trusted authority service; skipped, and saying so, without the sibling repositories |
 | `verify:boundaries` | Forge writes only `forge_*`; layers point one way; the kernel is pure; the model SDK lives under `server/` only and never reaches the browser; records hold no scores; no percent-complete |
-| `verify:schema` | `forge_*` only; no stored state column (created or added); RLS, append-only, database record time, anon revoked, no client update/delete; Helm's decision visibility cannot be dropped by a later policy; definer functions pin `search_path` |
+| `verify:schema` | `forge_*` only; no stored state column (created or added); RLS, append-only, database record time, anon revoked, no client update/delete; Helm's decision visibility cannot be dropped by a later policy; free text carries a class or is a named residual; the ceiling and standing triggers stay the last word; definer functions pin `search_path` |
+| `bench:reads` | not a contract: SYNTHETIC reads at organization scale, in memory and on PGlite, with and without the ledger cache |
 | `verify:loop` | the §28 chain on the record the story produced, plus the Memoire and memory loops |
 
 Each new rule was broken on purpose and seen to catch it.
@@ -251,15 +263,16 @@ Each new rule was broken on purpose and seen to catch it.
 
 - **The shared database.** All five migrations are proven on PGlite with Helm's real
   migrations — not on the shared project, and not applied there. No staging branch exists.
-- **Authority in the database, and a trusted authority at all.** Who may accept,
-  approve or close is the runtime's interim policy until Helm's runtime answers the port.
+- **Helm's trusted service as deployed.** Standing is proven with Helm's real service code over its real Postgres store
+  in one database (loop 4) — not through Helm's edge function and Supabase Auth, and no organization is TRUSTED anywhere.
 - **Free text beyond events.** Reasons and learnings take their commitment's ceiling and are sealed (ADR-0020); a
   candidate's dismissal reason is still open, because the notes it answers carry no class yet.
 - **A transport between the products.** Submissions to Helm are composed in the integration suite; no server sends them yet.
 - **Live services.** Supabase Auth, PostgREST, Memoire's deployed API and webhook
   delivery over the network, and the Claude API itself (opt-in test only).
 - **Execution surfaces.** Jira, ERP, WMS, SCM remain fixtures; no connector service runs.
-- **Scale.** Reads derive every commitment of an organization per call.
+- **Scale, first reading.** A warm reader catches up in milliseconds (ADR-0022); the first reading by each reader still
+  reads the whole organization.
 
 ## 15. Product decisions taken, and open questions
 

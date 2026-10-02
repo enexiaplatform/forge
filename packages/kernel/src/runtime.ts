@@ -54,6 +54,7 @@ import {
   type ExecutionLink,
   type Learning,
   type Lens,
+  END_OF_RECORD,
   latestAt,
   type NewEvent,
   type ObservedOutcome,
@@ -65,6 +66,7 @@ import {
   termFields,
 } from './types.ts';
 import { hasText, joinProtection, type Protection, protectionOf, textCeiling } from './sensitivity.ts';
+import { readerKey } from './ledgerCache.ts';
 
 export type ForgeRuntimeDeps = {
   readonly store: CommitmentStore;
@@ -156,16 +158,34 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     const evs = await store.eventsFor(scope, recs.value.map((r) => r.id));
     if (!evs.ok) return evs;
     const byId = new Map<string, CommitmentEvent[]>();
-    for (const e of evs.value) byId.set(e.commitmentId, [...(byId.get(e.commitmentId) ?? []), e]);
-    return ok(
-      recs.value
-        .map((r) => deriveView(r, byId.get(r.id) ?? [], lens))
-        .filter((v): v is CommitmentView => v !== null),
-    );
+    for (const e of evs.value) {
+      const on = byId.get(e.commitmentId);
+      if (on) on.push(e);
+      else byId.set(e.commitmentId, [e]);
+    }
+    return ok(recs.value.map((r) => derived(scope, r, byId.get(r.id) ?? [], lens)).filter((v): v is CommitmentView => v !== null));
   }
 
-  function authorize(scope: Scope, act: AuthorityAct, view: CommitmentView | null): Result<AuthorityVerdict> {
-    const verdict = authority.evaluate(scope, act, view);
+  /**
+   * Derivation, remembered per reader and commitment for the reading of everything recorded (the console's): a view
+   * depends only on the record, the events it sees and the lens, and history only grows, so the same record with the
+   * same number of events ending in the same event derives the same view. A reading at an earlier lens is derived
+   * afresh. What is remembered is a copy of a derivation — dropping it changes nothing.
+   */
+  const memo = new Map<string, { readonly signature: string; readonly view: CommitmentView }>();
+  function derived(scope: Scope, record: CommitmentRecord, events: readonly CommitmentEvent[], lens: Lens): CommitmentView | null {
+    if (lens.recordedThrough !== END_OF_RECORD) return deriveView(record, events, lens);
+    const key = `${readerKey(scope)}|${record.id}`;
+    const signature = `${record.recordedAt}|${events.length}|${events.at(-1)?.id ?? ''}`;
+    const hit = memo.get(key);
+    if (hit && hit.signature === signature) return hit.view.lens === lens ? hit.view : { ...hit.view, lens };
+    const view = deriveView(record, events, lens);
+    if (view !== null) memo.set(key, { signature, view });
+    return view;
+  }
+
+  async function authorize(scope: Scope, act: AuthorityAct, view: CommitmentView | null): Promise<Result<AuthorityVerdict>> {
+    const verdict = await authority.evaluate(scope, act, view);
     if (verdict.outcome === 'REFUSED') {
       return fail('authority.refused', verdict.statement, { policy: verdict.policy, rule: verdict.rule });
     }
@@ -185,6 +205,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     statement: v.statement,
     approvalRequestId,
     trusted: v.trusted,
+    ...(v.attestation ? { attestation: v.attestation } : {}),
   });
 
   function event<T extends EventType>(
@@ -270,7 +291,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
       if (!parent.ok) return parent;
       if (parent.value === null) return fail('commitment.parent_not_found', 'The parent commitment does not exist.');
     }
-    const verdict = authorize(scope, { kind: 'PROPOSE' }, null);
+    const verdict = await authorize(scope, { kind: 'PROPOSE' }, null);
     if (!verdict.ok) return verdict;
 
     const capture = Object.fromEntries(termFields.map((f) => [f, input.capture?.[f] ?? 'MANUAL'])) as Record<TermField, CaptureMode>;
@@ -312,7 +333,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     if (!loaded.ok) return loaded;
     const v = loaded.value;
     if (v.phase !== 'PROPOSED') return fail('commitment.not_proposed', 'Only a proposed commitment can be accepted.', { phase: v.phase });
-    const verdict = authorize(scope, { kind: 'ACCEPT' }, v);
+    const verdict = await authorize(scope, { kind: 'ACCEPT' }, v);
     if (!verdict.ok) return verdict;
 
     const finalEvidence = input.evidence ?? v.terms.evidence;
@@ -341,7 +362,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     if (!loaded.ok) return loaded;
     const v = loaded.value;
     if (v.phase !== 'PROPOSED') return fail('commitment.not_proposed', 'Only a proposed commitment can be declined.', { phase: v.phase });
-    const verdict = authorize(scope, { kind: 'DECLINE' }, v);
+    const verdict = await authorize(scope, { kind: 'DECLINE' }, v);
     if (!verdict.ok) return verdict;
     return append(scope, id, [
       event(scope, id, 'DECLINED', { party: v.terms.owner }, { reason, authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection }),
@@ -357,7 +378,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     const v = loaded.value;
     const valid = await validateChange(scope, v, c);
     if (!valid.ok) return valid;
-    const verdict = authorize(scope, { kind: 'CHANGE', change: c }, v);
+    const verdict = await authorize(scope, { kind: 'CHANGE', change: c }, v);
     if (!verdict.ok) return verdict;
 
     if (verdict.value.outcome === 'REQUIRES_APPROVAL') {
@@ -407,7 +428,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     if (!req) return fail('change.not_found', 'There is no such change request on this commitment.');
     if (req.decided !== null) return fail('change.already_decided', 'That change has already been decided.');
     if (decision === 'REJECTED' && blank(reason)) return fail('reason.required', 'Say why you are rejecting the change.');
-    const verdict = authorize(scope, { kind: 'DECIDE_CHANGE', approver: req.approver }, v);
+    const verdict = await authorize(scope, { kind: 'DECIDE_CHANGE', approver: req.approver }, v);
     if (!verdict.ok) return verdict;
 
     const decided = event(scope, id, 'CHANGE_DECIDED', { requestId, decision }, { reason, authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection });
@@ -438,7 +459,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     const loaded = await load(scope, id);
     if (!loaded.ok) return loaded;
     if (loaded.value.phase !== 'CLOSED') return fail('commitment.not_closed', 'Only a closed commitment can be reopened.');
-    const verdict = authorize(scope, { kind: 'REOPEN' }, loaded.value);
+    const verdict = await authorize(scope, { kind: 'REOPEN' }, loaded.value);
     if (!verdict.ok) return verdict;
     return append(scope, id, [event(scope, id, 'REOPENED', {}, { reason, authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection })]);
   }
@@ -520,7 +541,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     const v = loaded.value;
     const valid = validateEvidence(v, input);
     if (!valid.ok) return valid;
-    const verdict = authorize(scope, { kind: 'RECORD_EVIDENCE', evidence: input }, v);
+    const verdict = await authorize(scope, { kind: 'RECORD_EVIDENCE', evidence: input }, v);
     if (!verdict.ok) return verdict;
     return append(scope, id, [
       event(scope, id, 'EVIDENCE_RECORDED', { evidence: { ...input, id: ids.next('evd') } }, {
@@ -538,7 +559,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     const entry = loaded.value.evidence.find((e) => e.item.id === evidenceId);
     if (!entry) return fail('evidence.not_found', 'There is no such evidence on this commitment.');
     if (entry.disputed !== null) return fail('evidence.already_disputed', 'That evidence is already disputed.');
-    const verdict = authorize(scope, { kind: 'DISPUTE_EVIDENCE' }, loaded.value);
+    const verdict = await authorize(scope, { kind: 'DISPUTE_EVIDENCE' }, loaded.value);
     if (!verdict.ok) return verdict;
     return append(scope, id, [event(scope, id, 'EVIDENCE_DISPUTED', { evidenceId }, { reason, authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection })]);
   }
@@ -550,7 +571,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     const loaded = await load(scope, id);
     if (!loaded.ok) return loaded;
     if (loaded.value.links.some((l) => l.link.system === link.system && l.link.ref === link.ref)) return ok(loaded.value);
-    const verdict = authorize(scope, { kind: 'LINK_EXECUTION' }, loaded.value);
+    const verdict = await authorize(scope, { kind: 'LINK_EXECUTION' }, loaded.value);
     if (!verdict.ok) return verdict;
     return append(scope, id, [
       event(scope, id, 'EXECUTION_LINKED', { link: { ...link, id: ids.next('lnk') } }, { authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection }),
@@ -572,7 +593,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     const loaded = await load(scope, id);
     if (!loaded.ok) return loaded;
     if (!loaded.value.links.some((l) => l.link.id === input.linkId)) return fail('link.not_found', 'There is no such execution link on this commitment.');
-    const verdict = authorize(scope, { kind: 'OBSERVE_ACTIVITY' }, loaded.value);
+    const verdict = await authorize(scope, { kind: 'OBSERVE_ACTIVITY' }, loaded.value);
     if (!verdict.ok) return verdict;
     return append(scope, id, [
       event(scope, id, 'ACTIVITY_OBSERVED', input, { authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection, idempotencyKey: opts.idempotencyKey }),
@@ -591,7 +612,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
       if (!other.ok) return other;
       if (other.value === null) return fail('dependency.not_found', 'The commitment it depends on does not exist.');
     }
-    const verdict = authorize(scope, { kind: 'DECLARE_DEPENDENCY' }, loaded.value);
+    const verdict = await authorize(scope, { kind: 'DECLARE_DEPENDENCY' }, loaded.value);
     if (!verdict.ok) return verdict;
     return append(scope, id, [event(scope, id, 'DEPENDENCY_DECLARED', { dependency }, { authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection })]);
   }
@@ -611,7 +632,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     const dep = loaded.value.dependencies.find((d) => d.dependency.key === key);
     if (!dep) return fail('dependency.not_found', 'There is no such dependency on this commitment.');
     if (dep.settled !== null) return ok(loaded.value);
-    const verdict = authorize(scope, { kind: 'SETTLE_DEPENDENCY' }, loaded.value);
+    const verdict = await authorize(scope, { kind: 'SETTLE_DEPENDENCY' }, loaded.value);
     if (!verdict.ok) return verdict;
     return append(scope, id, [
       event(scope, id, 'DEPENDENCY_SETTLED', { key, observationId: input.observationId }, {
@@ -640,7 +661,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     if (badActual) return fail('outcome.invalid_measure', `The actual value for “${badActual.key}” must be a number.`);
     const unknownBasis = outcome.basis.find((b) => !v.evidence.some((e) => e.item.id === b));
     if (unknownBasis) return fail('outcome.unknown_basis', 'An outcome can only rest on evidence recorded on this commitment.');
-    const verdict = authorize(scope, { kind: 'RECORD_OUTCOME' }, v);
+    const verdict = await authorize(scope, { kind: 'RECORD_OUTCOME' }, v);
     if (!verdict.ok) return verdict;
     // ADR-0017: an actual carries its measure's class; the outcome carries the classes of the evidence it rests on.
     const stamped: ObservedOutcome = {
@@ -665,7 +686,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     if (seen.value) return load(scope, id);
     const loaded = await load(scope, id);
     if (!loaded.ok) return loaded;
-    const verdict = authorize(scope, { kind: 'RECORD_CONTEXT_CHANGE' }, loaded.value);
+    const verdict = await authorize(scope, { kind: 'RECORD_CONTEXT_CHANGE' }, loaded.value);
     if (!verdict.ok) return verdict;
     return append(scope, id, [
       event(scope, id, 'CONTEXT_CHANGED', input, { authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection, idempotencyKey: opts.idempotencyKey }),
@@ -679,7 +700,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     const cc = loaded.value.contextChanges.find((c) => c.eventId === contextEventId);
     if (!cc) return fail('context.not_found', 'There is no such context change on this commitment.');
     if (cc.reaffirmed !== null) return fail('context.already_reaffirmed', 'The commitment was already reaffirmed after this change.');
-    const verdict = authorize(scope, { kind: 'REAFFIRM' }, loaded.value);
+    const verdict = await authorize(scope, { kind: 'REAFFIRM' }, loaded.value);
     if (!verdict.ok) return verdict;
     return append(scope, id, [event(scope, id, 'CONTEXT_REAFFIRMED', { contextEventId }, { reason, authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection })]);
   }
@@ -690,7 +711,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     if (blank(input.statement)) return fail('learning.statement_required', 'Say what the enterprise should remember.');
     const loaded = await load(scope, id);
     if (!loaded.ok) return loaded;
-    const verdict = authorize(scope, { kind: 'RECORD_LEARNING' }, loaded.value);
+    const verdict = await authorize(scope, { kind: 'RECORD_LEARNING' }, loaded.value);
     if (!verdict.ok) return verdict;
     return append(scope, id, [
       event(scope, id, 'LEARNING_RECORDED', { learning: { ...input, id: ids.next('lrn') } }, { authority: basis(verdict.value), effectiveAt: opts.effectiveAt, raise: opts.textProtection }),
@@ -706,7 +727,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     const verified = verifyOutcome(loaded.value);
     if (!verified.ok) return fail(verified.error.code, verified.error.message, verified.error.details);
     const publication = verified.value;
-    const verdict = authorize(scope, { kind: 'PUBLISH_OUTCOME' }, loaded.value);
+    const verdict = await authorize(scope, { kind: 'PUBLISH_OUTCOME' }, loaded.value);
     if (!verdict.ok) return verdict;
     const key = `publish:${id}:${publication.fingerprint}`;
     const seen = await replayed(scope, key);
@@ -738,7 +759,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
   async function suggestCandidates(scope: Scope, inputs: readonly SuggestCandidateInput[]): Promise<Result<CandidateView[]>> {
     const cs = candidateStore();
     if (!cs.ok) return cs;
-    const verdict = authorize(scope, { kind: 'SUGGEST_CANDIDATE' }, null);
+    const verdict = await authorize(scope, { kind: 'SUGGEST_CANDIDATE' }, null);
     if (!verdict.ok) return verdict;
     for (const c of inputs) {
       const valid = validateCandidate(c);
@@ -777,7 +798,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     const cs = candidateStore();
     if (!cs.ok) return cs;
     if (scope.actor.kind !== 'PERSON') return fail('authority.refused', 'Only a person decides that what was read is not a commitment.');
-    const verdict = authorize(scope, { kind: 'DISPOSE_CANDIDATE' }, null);
+    const verdict = await authorize(scope, { kind: 'DISPOSE_CANDIDATE' }, null);
     if (!verdict.ok) return verdict;
     const c = await pendingCandidate(scope, candidateId);
     if (!c.ok) return c;
@@ -809,7 +830,7 @@ export function createForgeRuntime(deps: ForgeRuntimeDeps) {
     const cs = candidateStore();
     if (!cs.ok) return cs;
     if (scope.actor.kind !== 'PERSON') return fail('authority.refused', 'Only a person turns what was read into a commitment. A model proposes; it never confirms.');
-    const verdict = authorize(scope, { kind: 'DISPOSE_CANDIDATE' }, null);
+    const verdict = await authorize(scope, { kind: 'DISPOSE_CANDIDATE' }, null);
     if (!verdict.ok) return verdict;
     const c = await pendingCandidate(scope, candidateId);
     if (!c.ok) return c;

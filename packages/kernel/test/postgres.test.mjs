@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { createForgeRuntime, sequentialIds, unwrap } from '../src/index.ts';
+import { createForgeRuntime, createLedgerCache, sequentialIds, unwrap } from '../src/index.ts';
 import { createPostgresCandidateStore, createPostgresStore, createSqlTableClient } from '../src/postgres.ts';
 import { candidateConformance, storeConformance, newEvent, newRecord } from './conformance.mjs';
 
@@ -75,8 +75,17 @@ storeConformance('Postgres (PGlite, as authenticated users under RLS)', async ()
     listCommitments: (s, f) => stores[s.actor.id].listCommitments(s, f),
     eventsFor: (s, ids) => stores[s.actor.id].eventsFor(s, ids),
     findByIdempotencyKey: (s, k) => stores[s.actor.id].findByIdempotencyKey(s, k),
+    recordedAfter: (s, after) => stores[s.actor.id].recordedAfter(s, after),
   };
   return { store: routed, a: person(ORG_A, U.a), a2: person(ORG_A, U.a2), b: person(ORG_B, U.b) };
+});
+
+// The same contract, read through a ledger cache (development plan 2.4): a warm reader answers exactly as a cold one.
+storeConformance('Postgres, read through a ledger cache', async () => {
+  const pg = await database();
+  const stores = Object.fromEntries([U.a, U.a2, U.b].map((u) => [u, createLedgerCache(createPostgresStore(createSqlTableClient(runnerAs(pg, 'authenticated', u))))]));
+  const route = new Proxy({}, { get: (_t, method) => (s, ...args) => stores[s.actor.id][method](s, ...args) });
+  return { store: route, a: person(ORG_A, U.a), a2: person(ORG_A, U.a2), b: person(ORG_B, U.b) };
 });
 
 candidateConformance('Postgres (PGlite, as authenticated users under RLS)', async () => {

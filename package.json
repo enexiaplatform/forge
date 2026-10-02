@@ -18,6 +18,7 @@
     "verify": "npm run verify:boundaries && npm run verify:schema && npm run verify:loop",
     "check": "npm run typecheck && npm run lint && npm run test && npm run test:integration && npm run verify",
     "eval:extraction": "node server/eval/extraction-eval.mjs",
+    "bench:reads": "node scripts/bench-reads.mjs",
     "eval:extraction:live": "node server/eval/extraction-eval.mjs --live"
   },
   "dependencies": {

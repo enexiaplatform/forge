@@ -26,4 +26,10 @@ export interface CommitmentStore {
   eventsFor(scope: Scope, commitmentIds: readonly string[]): Promise<Result<CommitmentEvent[]>>;
   /** The event already recorded under an idempotency key, if any. */
   findByIdempotencyKey(scope: Scope, key: string): Promise<Result<CommitmentEvent | null>>;
+  /**
+   * Everything of the reader's organization recorded after an instant (all of it for null), as this reader may read
+   * it — what keeps a reader's ledger warm without reading it whole again (`createLedgerCache`). Optional: a store
+   * without it is read whole. `known` says which ids the reader already holds: a store may skip reading them whole.
+   */
+  recordedAfter?(scope: Scope, after: string | null, known?: (id: string) => boolean): Promise<Result<{ records: CommitmentRecord[]; events: CommitmentEvent[] }>>;
 }

@@ -112,6 +112,7 @@ if (!lastSealTrigger || !/^CREATE/i.test(lastSealTrigger[1]) || !/BEFORE\s+INSER
 const CLASSED_BY = { 'forge_commitment_events.reason': 'text_protection', 'forge_observations.summary': 'protection' };
 const RESIDUAL = {
   'forge_candidate_dispositions.reason': 'why a candidate read from notes is not a commitment; the notes it answers carry no class yet',
+  'forge_authority_modes.reason': 'a deployment note on the organization’s authority mode, written by the service role about no commitment',
 };
 for (const [file, table, column] of freeText) {
   const key = `${table}.${column}`;
@@ -125,11 +126,17 @@ if (!lastCeiling || !/^CREATE/i.test(lastCeiling[1]) || !/BEFORE\s+INSERT\s+ON\s
   violations.push('forge_events_ceiling is not the last word on forge_commitment_events: words could be stored below their commitment’s ceiling');
 }
 
+// ADR-0021: an act that binds accountability, claiming trust or in a TRUSTED organization, rests on Helm's standing.
+const lastStanding = [...all.matchAll(/(DROP|CREATE)\s+TRIGGER\s+(?:IF\s+EXISTS\s+)?forge_events_standing\b[^;]*;/gi)].pop();
+if (!lastStanding || !/^CREATE/i.test(lastStanding[1]) || !/BEFORE\s+INSERT\s+ON\s+public\.forge_commitment_events/i.test(lastStanding[0])) {
+  violations.push('forge_events_standing is not the last word on forge_commitment_events: an act could claim Helm’s trust without its attestation');
+}
+
 if (violations.length > 0) {
   console.error(`verify:schema — ${violations.length} violation(s):`);
   for (const v of violations) console.error(`  ✖ ${v}`);
   process.exit(1);
 }
 console.log(
-  `verify:schema — ${files.length} migration(s), ${tables} forge tables: namespaced, no stored state, row-level security, append-only, database record time, anon revoked, no client update or delete, Helm’s decision visibility inherited, Helm’s clearance enforced on protected values, words kept at their ceiling, definer functions pinned.`,
+  `verify:schema — ${files.length} migration(s), ${tables} forge tables: namespaced, no stored state, row-level security, append-only, database record time, anon revoked, no client update or delete, Helm’s decision visibility inherited, Helm’s clearance enforced on protected values, words kept at their ceiling, accountable acts bound to Helm’s standing, definer functions pinned.`,
 );

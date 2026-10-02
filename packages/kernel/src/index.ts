@@ -20,3 +20,4 @@ export * from './sensitivity.ts';
 export * from './port.ts';
 export * from './inMemoryStore.ts';
 export * from './runtime.ts';
+export * from './ledgerCache.ts';

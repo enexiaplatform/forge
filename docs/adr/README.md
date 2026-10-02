@@ -24,3 +24,5 @@ Each decision, why it was made, and what it costs. Format: context · decision �
 | [0018](0018-submitting-outcomes-through-helms-governed-intake.md) | Verified outcomes reach Helm through Helm's governed intake, as contextual facts; the genome references the episode, typed and pinned |
 | [0019](0019-decision-fidelity-is-a-record-of-departures.md) | Decision fidelity: where execution departs from what Helm committed, as a derived record — never scored |
 | [0020](0020-words-keep-the-ceiling-of-their-commitment.md) | Words people write take the ceiling of their commitment: stamped, sealed, enforced in both stores — never classified, never lowered |
+| [0021](0021-acts-that-bind-accountability-rest-on-helms-standing.md) | Acts that bind accountability rest on Helm's standing attestation; Forge's database binds it to the act; an organization moves to TRUSTED authority on the record |
+| [0022](0022-reading-an-organization-at-scale.md) | Reading at scale: pages and slices so nothing is truncated, a reader's warm ledger, remembered derivations — never stored state |

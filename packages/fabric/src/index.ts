@@ -20,3 +20,4 @@ export * from './fidelity.ts';
 export * from './surfaces.ts';
 export * from './ingest.ts';
 export * from './outbound.ts';
+export * from './helmAuthority.ts';

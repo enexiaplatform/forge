@@ -1,7 +1,7 @@
 /**
  * A PostgREST-shaped client over a SQL runner — the slice of supabase-js that
  * Helm's Postgres adapters and Forge's supabase TableClient use: from(), select,
- * insert, update, eq, neq, in, is, not(col, 'is', null), gt, lte, order, limit,
+ * insert, update, eq, neq, in, is, not(col, 'is', null), gt, lte, order, limit, range,
  * single, maybeSingle, rpc, and await. It returns `{ data, error }` exactly as
  * supabase-js does, with PostgREST's error code for single() on zero or many
  * rows. Memoire's own local proofs use the same technique.
@@ -30,6 +30,7 @@ class Query {
     this.params = [];
     this.orders = [];
     this.limitTo = null;
+    this.offsetBy = null;
     this.expect = 'many';
   }
   select(columns) {
@@ -82,6 +83,11 @@ class Query {
     this.limitTo = n;
     return this;
   }
+  range(from, to) {
+    this.offsetBy = from;
+    this.limitTo = to - from + 1;
+    return this;
+  }
   single() {
     this.expect = 'one';
     return this;
@@ -107,7 +113,7 @@ class Query {
       return { text: `UPDATE ${ident(this.table)} SET ${sets.join(', ')}${where} RETURNING ${columnList(this.returning ?? '*')}`, params };
     }
     const order = this.orders.length ? ` ORDER BY ${this.orders.join(', ')}` : '';
-    const limit = this.limitTo !== null ? ` LIMIT ${Number(this.limitTo)}` : '';
+    const limit = (this.limitTo !== null ? ` LIMIT ${Number(this.limitTo)}` : '') + (this.offsetBy !== null ? ` OFFSET ${Number(this.offsetBy)}` : '');
     return { text: `SELECT ${columnList(this.columns)} FROM ${ident(this.table)}${where}${order}${limit}`, params };
   }
   async execute() {

@@ -8,7 +8,8 @@
 -- request.jwt.claims), so row-level security, guards and grants decide. A failed check raises
 -- 'STAGING CONTRACT FAILED: <check>: <detail>' and stops the run; a passing run returns one row per check.
 --
---   tenant isolation · inherited Helm visibility · sensitivity propagation · words at their ceiling · append-only history ·
+--   tenant isolation · inherited Helm visibility · sensitivity propagation · words at their ceiling · acts bound to Helm's standing ·
+--   append-only history ·
 --   impersonation prevention · idempotency · authority enforced in the database · Forge outcome publication ·
 --   Helm's governed intake
 
@@ -189,6 +190,33 @@ BEGIN
   IF n <> 0 THEN RAISE EXCEPTION 'STAGING CONTRACT FAILED: words: a reader without Helm clearance read a sealed reason'; END IF;
   RESET ROLE;
   INSERT INTO forge_staging_results (contract, detail) VALUES ('words at their ceiling', 'a reason below its commitment''s ceiling refused; at it, sealed and read only under Helm''s clearance');
+
+  -- ------------------------------------------- 6c. acts bound to Helm's standing
+  -- A consequential event that claims a trusted verdict must name Helm's attestation for the person who holds the act.
+  INSERT INTO public.helm_standing_attestations (id, org_id, caller_user_id, for_user_id, basis, evaluator, attested_at)
+    VALUES (snap, org_a, gm, gm, '{"kind": "SELF"}', '{"kind": "TRUSTED_SERVICE", "host": "staging-contracts"}', now());
+  PERFORM set_config('request.jwt.claim.sub', gm::text, true); PERFORM set_config('request.jwt.claims', json_build_object('sub', gm, 'role', 'authenticated')::text, true); SET LOCAL ROLE authenticated;
+  refused := false;
+  BEGIN
+    INSERT INTO public.forge_commitment_events (id, org_id, commitment_id, event_type, effective_at, actor, authority, payload)
+      VALUES ('fe_' || run || '_untrusted', org_a, fc, 'ACCEPTED', now(), jsonb_build_object('kind', 'PERSON', 'id', gm, 'label', 'GM'),
+        jsonb_build_object('policy', 'helm-standing@1', 'rule', 'owner-accepts', 'statement', 'claimed', 'trusted', true), jsonb_build_object('party', terms->'owner'));
+  EXCEPTION WHEN others THEN refused := true; END;
+  IF NOT refused THEN RAISE EXCEPTION 'STAGING CONTRACT FAILED: standing: an act claimed a trusted verdict without Helm''s attestation'; END IF;
+  refused := false;
+  BEGIN
+    INSERT INTO public.forge_commitment_events (id, org_id, commitment_id, event_type, effective_at, actor, authority, payload)
+      VALUES ('fe_' || run || '_borrowed', org_a, fc, 'ACCEPTED', now(), jsonb_build_object('kind', 'PERSON', 'id', gm, 'label', 'GM'),
+        jsonb_build_object('policy', 'helm-standing@1', 'rule', 'owner-accepts', 'statement', 'claimed', 'trusted', true, 'attestation', snap::text), jsonb_build_object('party', terms->'owner'));
+  EXCEPTION WHEN others THEN refused := true; END;
+  IF NOT refused THEN RAISE EXCEPTION 'STAGING CONTRACT FAILED: standing: an attestation for a person who does not hold the act was accepted'; END IF;
+  refused := false;
+  BEGIN
+    INSERT INTO public.forge_authority_modes (id, org_id, mode, reason) VALUES ('fm_' || run, org_a, 'INTERIM', 'A client switching authority (SYNTHETIC).');
+  EXCEPTION WHEN others THEN refused := true; END;
+  IF NOT refused THEN RAISE EXCEPTION 'STAGING CONTRACT FAILED: standing: a client recorded the organization''s authority mode'; END IF;
+  RESET ROLE;
+  INSERT INTO forge_staging_results (contract, detail) VALUES ('acts bound to Helm''s standing', 'a trusted claim needs Helm''s attestation, for the person who holds the act; no client switches the mode');
 
   -- ----------------------------------------- 7. outcome publication · authority
   PERFORM set_config('request.jwt.claim.sub', gm::text, true); PERFORM set_config('request.jwt.claims', json_build_object('sub', gm, 'role', 'authenticated')::text, true); SET LOCAL ROLE authenticated;

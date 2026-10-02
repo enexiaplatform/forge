@@ -56,6 +56,8 @@ type VerdictBase = {
   readonly statement: string;
   /** True only when a trusted authority service (Helm's) produced the verdict; Forge's interim policy never is. */
   readonly trusted: boolean;
+  /** The trusted authority's record the verdict rests on — Helm's standing attestation (ADR-0021). */
+  readonly attestation?: string;
 };
 
 export type AuthorityVerdict =
@@ -65,8 +67,8 @@ export type AuthorityVerdict =
 
 export interface AuthorityPort {
   readonly policy: string;
-  /** `view` is null only for PROPOSE, when there is no commitment yet. */
-  evaluate(scope: Scope, act: AuthorityAct, view: CommitmentView | null): AuthorityVerdict;
+  /** `view` is null only for PROPOSE, when there is no commitment yet. A trusted authority answers over the network. */
+  evaluate(scope: Scope, act: AuthorityAct, view: CommitmentView | null): AuthorityVerdict | Promise<AuthorityVerdict>;
 }
 
 export const INTERIM_POLICY = 'forge-interim-authority@1';
@@ -82,10 +84,13 @@ const approval = (rule: string, statement: string, approver: Party): AuthorityVe
   trusted: false,
 });
 
+/** An authority that answers at once — the interim policy, which the console also asks what a reader may do. */
+export type ImmediateAuthority = Omit<AuthorityPort, 'evaluate'> & { evaluate(scope: Scope, act: AuthorityAct, view: CommitmentView | null): AuthorityVerdict };
+
 /** The interim policy. Pure: the same scope, act and view always give the same verdict. */
-export const interimAuthority: AuthorityPort = {
+export const interimAuthority: ImmediateAuthority = {
   policy: INTERIM_POLICY,
-  evaluate(scope, act, view) {
+  evaluate(scope: Scope, act: AuthorityAct, view: CommitmentView | null): AuthorityVerdict {
     if (scope.role === 'viewer') return refused('viewer-reads-only', 'A viewer can read commitments but not change them.');
 
     if (scope.actor.kind === 'AGENT') return agentVerdict(act);

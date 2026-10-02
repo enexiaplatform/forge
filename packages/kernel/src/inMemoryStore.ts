@@ -7,16 +7,28 @@
 import { type Clock, fail, ok, type Result } from './primitives.ts';
 import type { CommitmentFilter, CommitmentStore } from './port.ts';
 import type { CommitmentEvent, CommitmentRecord } from './types.ts';
-import { readAs, textCeiling, textMeetsCeiling } from './sensitivity.ts';
+import { hasText, readAs, textCeiling, textMeetsCeiling } from './sensitivity.ts';
 import { orderEvents } from './derive.ts';
+
+function deepFreeze<T>(v: T): T {
+  if (v !== null && typeof v === 'object' && !Object.isFrozen(v)) {
+    Object.freeze(v);
+    for (const x of Object.values(v)) deepFreeze(x);
+  }
+  return v;
+}
 
 export function createInMemoryStore(clock: Clock): CommitmentStore & { snapshot(): { records: CommitmentRecord[]; events: CommitmentEvent[] } } {
   const records = new Map<string, CommitmentRecord>();
   const events: CommitmentEvent[] = [];
+  const byCommitment = new Map<string, CommitmentEvent[]>();
   const keys = new Map<string, string>();
   const seqs = new Map<string, number>();
 
-  const freeze = <T>(v: T): T => structuredClone(v);
+  // Copied once on the way in, then frozen all the way down: what a reader receives cannot change the record, so it
+  // is handed out as it is rather than copied on every read.
+  const freeze = <T>(v: T): T => deepFreeze(structuredClone(v));
+  const hand = <T>(v: T): T => deepFreeze(v);
 
   return {
     async insertCommitment(scope, record) {
@@ -28,7 +40,7 @@ export function createInMemoryStore(clock: Clock): CommitmentStore & { snapshot(
       }
       const stored: CommitmentRecord = freeze({ ...record, recordedAt: clock.now() });
       records.set(stored.id, stored);
-      return ok(freeze(stored));
+      return ok(hand(stored));
     },
 
     async appendEvents(scope, batch) {
@@ -44,8 +56,7 @@ export function createInMemoryStore(clock: Clock): CommitmentStore & { snapshot(
           batchKeys.add(k);
         }
         // ADR-0017: words are protected at least as well as the commitment they are written on.
-        const before = [...events.filter((x) => x.commitmentId === e.commitmentId), ...batch.slice(0, i).filter((x) => x.commitmentId === e.commitmentId)];
-        if (!textMeetsCeiling(e, textCeiling(rec, before))) {
+        if (hasText(e) && !textMeetsCeiling(e, textCeiling(rec, [...(byCommitment.get(e.commitmentId) ?? []), ...batch.slice(0, i).filter((x) => x.commitmentId === e.commitmentId)]))) {
           return fail('event.text_below_ceiling', 'Words written on this commitment must carry every class it rests on; they cannot be stored less protected.');
         }
       }
@@ -56,15 +67,18 @@ export function createInMemoryStore(clock: Clock): CommitmentStore & { snapshot(
         seqs.set(e.commitmentId, seq);
         const stored = freeze({ ...e, seq, recordedAt: now }) as CommitmentEvent;
         events.push(stored);
+        const on = byCommitment.get(e.commitmentId);
+        if (on) on.push(stored);
+        else byCommitment.set(e.commitmentId, [stored]);
         if (e.idempotencyKey !== null) keys.set(`${e.orgId}|${e.idempotencyKey}`, e.id);
-        written.push(freeze(stored));
+        written.push(hand(stored));
       }
       return ok(written);
     },
 
     async getCommitment(scope, id) {
       const rec = records.get(id);
-      return ok(rec && rec.orgId === scope.orgId ? freeze(rec) : null);
+      return ok(rec && rec.orgId === scope.orgId ? hand(rec) : null);
     },
 
     async listCommitments(scope, filter: CommitmentFilter = {}) {
@@ -75,19 +89,26 @@ export function createInMemoryStore(clock: Clock): CommitmentStore & { snapshot(
           (filter.originRef === undefined || r.origin.ref === filter.originRef),
       );
       out.sort((a, b) => (a.recordedAt === b.recordedAt ? (a.id < b.id ? -1 : 1) : a.recordedAt < b.recordedAt ? -1 : 1));
-      return ok(freeze(out));
+      return ok(hand(out));
     },
 
     async eventsFor(scope, ids) {
-      const wanted = new Set(ids);
       // ADR-0017: what a reader is not cleared for is withheld, never silently dropped.
-      return ok(freeze(orderEvents(events.filter((e) => e.orgId === scope.orgId && wanted.has(e.commitmentId)).map((e) => readAs(e, scope.clearances)))));
+      const found = [...new Set(ids)].flatMap((id) => (byCommitment.get(id) ?? []).filter((e) => e.orgId === scope.orgId));
+      return ok(hand(orderEvents(found.map((e) => readAs(e, scope.clearances)))));
     },
 
     async findByIdempotencyKey(scope, key): Promise<Result<CommitmentEvent | null>> {
       const id = keys.get(`${scope.orgId}|${key}`);
       const found = id ? (events.find((e) => e.id === id) ?? null) : null;
-      return ok(found ? freeze(readAs(found, scope.clearances)) : null);
+      return ok(found ? hand(readAs(found, scope.clearances)) : null);
+    },
+
+    async recordedAfter(scope, after, known = () => false) {
+      const later = (at: string) => after === null || at > after;
+      const recs = [...records.values()].filter((r) => r.orgId === scope.orgId && later(r.recordedAt) && !known(r.id));
+      const evs = events.filter((e) => e.orgId === scope.orgId && later(e.recordedAt) && !known(e.id)).map((e) => readAs(e, scope.clearances));
+      return ok({ records: hand(recs), events: hand(orderEvents(evs)) });
     },
 
     snapshot() {
